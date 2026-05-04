@@ -1,9 +1,9 @@
 class AppConstants {
   static const String appName = 'Qread';
-  static const String appVersion = '1.0.0';
+  static const String appVersion = '3.4.6';
 
   // API
-  static const String apiVersion = '1';
+  static const String apiVersion = '5';
   static String baseUrl = 'http://localhost:8080';
   static String get apiBase => '$baseUrl/api/$apiVersion';
 

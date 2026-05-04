@@ -19,7 +19,7 @@ class UserProvider extends ChangeNotifier {
       try {
         final info = await ApiService.instance.getUserInfo(_token!);
         if (info['isSuccess'] == true) {
-          _username = info['data']?['name'];
+          _username = info['data']?['userInfo']?['username'];
         } else {
           _token = null;
           await storage.removeToken();
@@ -39,7 +39,7 @@ class UserProvider extends ChangeNotifier {
     try {
       final result = await ApiService.instance.login(username, password);
       if (result['isSuccess'] == true) {
-        _token = result['data']?['token'];
+        _token = result['data']?['accessToken'];
         _username = username;
         final storage = await StorageService.instance;
         await storage.setToken(_token!);
