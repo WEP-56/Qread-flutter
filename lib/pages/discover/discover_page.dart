@@ -21,10 +21,14 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final isLoggedIn = context.watch<UserProvider>().isLoggedIn;
+    _tryLoadData();
+  }
+
+  void _tryLoadData() {
+    final isLoggedIn = context.read<UserProvider>().isLoggedIn;
     if (isLoggedIn && !_dataLoaded) {
       _dataLoaded = true;
-      _loadSources();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadSources());
     } else if (!isLoggedIn) {
       _dataLoaded = false;
     }
@@ -40,6 +44,9 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final userProvider = context.watch<UserProvider>();
+    final provider = context.watch<DiscoverProvider>();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('发现'),
@@ -50,60 +57,60 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
           ),
         ],
       ),
-      body: Consumer2<UserProvider, DiscoverProvider>(
-        builder: (context, userProvider, provider, _) {
-          if (!userProvider.isLoggedIn) {
-            return const Center(child: Text('请先登录'));
-          }
-          if (provider.loading && provider.exploreSources.isEmpty) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (provider.error != null && provider.exploreSources.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(provider.error!, style: const TextStyle(color: Colors.red)),
-                  const SizedBox(height: 16),
-                  ElevatedButton(onPressed: _loadSources, child: const Text('重试')),
-                ],
-              ),
-            );
-          }
-          if (provider.exploreSources.isEmpty) {
-            return const Center(child: Text('暂无发现源，请先导入书源'));
-          }
+      body: _buildBody(userProvider, provider),
+    );
+  }
 
-          final groups = <String, List<BookSource>>{};
-          for (final source in provider.exploreSources) {
-            final group = source.bookSourceGroup ?? '未分组';
-            groups.putIfAbsent(group, () => []).add(source);
-          }
+  Widget _buildBody(UserProvider userProvider, DiscoverProvider provider) {
+    if (!userProvider.isLoggedIn) {
+      return const Center(child: Text('请先登录'));
+    }
+    if (provider.loading && provider.exploreSources.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (provider.error != null && provider.exploreSources.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(provider.error!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 16),
+            ElevatedButton(onPressed: _loadSources, child: const Text('重试')),
+          ],
+        ),
+      );
+    }
+    if (provider.exploreSources.isEmpty) {
+      return const Center(child: Text('暂无发现源，请先导入书源'));
+    }
 
-          return RefreshIndicator(
-            onRefresh: () async {
-              _dataLoaded = false;
-              _loadSources();
-            },
-            child: ListView.builder(
-              itemCount: groups.length,
-              itemBuilder: (context, index) {
-                final group = groups.keys.elementAt(index);
-                final sources = groups[group]!;
-                return ExpansionTile(
-                  title: Text(group),
-                  initiallyExpanded: index == 0,
-                  children: sources.map((source) {
-                    return ListTile(
-                      title: Text(source.bookSourceName ?? ''),
-                      subtitle: Text(source.bookSourceUrl ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _showExplore(source),
-                    );
-                  }).toList(),
-                );
-              },
-            ),
+    final groups = <String, List<BookSource>>{};
+    for (final source in provider.exploreSources) {
+      final group = source.bookSourceGroup ?? '未分组';
+      groups.putIfAbsent(group, () => []).add(source);
+    }
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        _dataLoaded = false;
+        _loadSources();
+      },
+      child: ListView.builder(
+        itemCount: groups.length,
+        itemBuilder: (context, index) {
+          final group = groups.keys.elementAt(index);
+          final sources = groups[group]!;
+          return ExpansionTile(
+            title: Text(group),
+            initiallyExpanded: index == 0,
+            children: sources.map((source) {
+              return ListTile(
+                title: Text(source.bookSourceName ?? ''),
+                subtitle: Text(source.bookSourceUrl ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showExplore(source),
+              );
+            }).toList(),
           );
         },
       ),
@@ -114,7 +121,6 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     final accessToken = context.read<UserProvider>().token;
     if (accessToken == null) return;
 
-    // 通过 API 获取发现分类
     _showExploreCategories(source, accessToken);
   }
 
@@ -195,7 +201,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   }
 
   void _navigateToExplore(BookSource source, String url, String title) {
-    // TODO: 导航到发现详情页，展示 exploreBook 结果
+    // TODO: 导航到发现详情页
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('打开发现: $title')),
     );

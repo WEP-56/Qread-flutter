@@ -6,7 +6,6 @@ class DiscoverProvider extends ChangeNotifier {
   List<BookSource> _exploreSources = [];
   bool _loading = false;
   String? _error;
-  String? _md5;
 
   List<BookSource> get exploreSources => _exploreSources;
   bool get loading => _loading;
@@ -18,31 +17,34 @@ class DiscoverProvider extends ChangeNotifier {
     _loading = true;
     _error = null;
     if (refresh) {
-      _md5 = null;
       _exploreSources = [];
     }
     notifyListeners();
 
     try {
-      // Step 1: 获取 md5
-      if (_md5 == null) {
-        final pageData = await ApiService.instance.getBookSourcesPage(accessToken);
-        final data = pageData['data'] ?? pageData;
-        _md5 = data['md5']?.toString();
+      // 尝试通过 Page+New 缓存接口获取
+      final pageData = await ApiService.instance.getBookSourcesPage(accessToken);
+      final data = pageData['data'] ?? pageData;
+      final md5 = data['md5']?.toString();
+      final totalPages = int.tryParse(data['page']?.toString() ?? '1') ?? 1;
+
+      List<BookSource> allSources = [];
+
+      if (md5 != null) {
+        for (int page = 1; page <= totalPages; page++) {
+          final sources = await ApiService.instance.getBookSourcesNew(
+            accessToken,
+            md5: md5,
+            page: page,
+          );
+          if (sources.isEmpty) break;
+          allSources.addAll(sources);
+        }
       }
 
-      // Step 2: 加载所有书源（分页）
-      final allSources = <BookSource>[];
-      int page = 1;
-      while (true) {
-        final sources = await ApiService.instance.getBookSourcesNew(
-          accessToken,
-          md5: _md5,
-          page: page,
-        );
-        if (sources.isEmpty) break;
-        allSources.addAll(sources);
-        page++;
+      // Fallback: 如果缓存接口返回空，直接获取
+      if (allSources.isEmpty) {
+        allSources = await ApiService.instance.getBookSources(accessToken);
       }
 
       _exploreSources = allSources.where((s) => s.enabledExplore == true).toList();

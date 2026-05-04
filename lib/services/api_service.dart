@@ -256,9 +256,21 @@ class ApiService {
     };
     if (md5 != null) params['md5'] = md5;
     final resp = await _dio.get('/getBookSourcesNew', queryParameters: params);
-    final data = resp.data['data'];
-    if (data is List) {
-      return data.map((e) => BookSource.fromJson(e as Map<String, dynamic>)).toList();
+    final json = resp.data;
+    if (json['isSuccess'] == true && json['data'] is List) {
+      return (json['data'] as List).map((e) => BookSource.fromJson(e as Map<String, dynamic>)).toList();
+    }
+    return [];
+  }
+
+  /// Fallback: 直接获取书源列表（无缓存）
+  Future<List<BookSource>> getBookSources(String accessToken) async {
+    final resp = await _dio.get('/getBookSources', queryParameters: {
+      'accessToken': accessToken,
+    });
+    final json = resp.data;
+    if (json['isSuccess'] == true && json['data'] is List) {
+      return (json['data'] as List).map((e) => BookSource.fromJson(e as Map<String, dynamic>)).toList();
     }
     return [];
   }
@@ -290,6 +302,34 @@ class ApiService {
 
   Future<List<RssSource>> getRssSourcesNew(String accessToken, {String? md5, int page = 1}) async {
     final params = <String, dynamic>{
+      'accessToken': accessToken,
+      'page': page.toString(),
+    };
+    if (md5 != null) params['md5'] = md5;
+    final resp = await _dio.get('/getRssSourcessNew', queryParameters: params);
+    final json = resp.data;
+    if (json['isSuccess'] == true && json['data'] is List) {
+      return (json['data'] as List).map((e) => RssSource.fromJson(e as Map<String, dynamic>)).toList();
+    }
+    return [];
+  }
+
+  /// Fallback: 直接获取RSS源列表（无缓存）
+  Future<List<RssSource>> getRssSources(String accessToken) async {
+    final resp = await _dio.get('/getRssSourcess', queryParameters: {
+      'accessToken': accessToken,
+    });
+    final json = resp.data;
+    if (json['isSuccess'] == true && json['data'] is List) {
+      // getRssSourcess 返回 {sources: [...], can: ...}
+      final data = json['data'];
+      final sourcesList = data is Map ? data['sources'] : data;
+      if (sourcesList is List) {
+        return sourcesList.map((e) => RssSource.fromJson(e as Map<String, dynamic>)).toList();
+      }
+    }
+    return [];
+  }
       'accessToken': accessToken,
       'page': page,
     };

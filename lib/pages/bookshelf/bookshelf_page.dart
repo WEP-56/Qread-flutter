@@ -20,10 +20,14 @@ class _BookshelfPageState extends State<BookshelfPage> with AutomaticKeepAliveCl
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final isLoggedIn = context.watch<UserProvider>().isLoggedIn;
+    _tryLoadData();
+  }
+
+  void _tryLoadData() {
+    final isLoggedIn = context.read<UserProvider>().isLoggedIn;
     if (isLoggedIn && !_dataLoaded) {
       _dataLoaded = true;
-      _loadData();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
     } else if (!isLoggedIn) {
       _dataLoaded = false;
     }
@@ -32,8 +36,7 @@ class _BookshelfPageState extends State<BookshelfPage> with AutomaticKeepAliveCl
   void _loadData() {
     final token = context.read<UserProvider>().token;
     if (token != null) {
-      final provider = context.read<BookshelfProvider>();
-      provider.loadBookshelf(token, refresh: true);
+      context.read<BookshelfProvider>().loadBookshelf(token, refresh: true);
     }
   }
 
@@ -50,81 +53,78 @@ class _BookshelfPageState extends State<BookshelfPage> with AutomaticKeepAliveCl
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return Consumer2<UserProvider, BookshelfProvider>(
-      builder: (context, userProvider, provider, _) {
-        if (!userProvider.isLoggedIn) {
-          return Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.menu_book, size: 64, color: Colors.grey),
-                const SizedBox(height: 16),
-                const Text('请先登录'),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () => Navigator.pushNamed(context, '/login'),
-                  child: const Text('去登录'),
-                ),
-              ],
+    final userProvider = context.watch<UserProvider>();
+    final provider = context.watch<BookshelfProvider>();
+
+    if (!userProvider.isLoggedIn) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.menu_book, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text('请先登录'),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => Navigator.pushNamed(context, '/login'),
+              child: const Text('去登录'),
             ),
-          );
-        }
+          ],
+        ),
+      );
+    }
 
-        final tabNames = _getTabNames(provider);
+    final tabNames = _getTabNames(provider);
 
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text('书架'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.search),
-                onPressed: () => Navigator.pushNamed(context, '/search'),
-              ),
-              PopupMenuButton<String>(
-                onSelected: (action) => _handleMenuAction(action),
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'refresh', child: Text('刷新')),
-                  const PopupMenuItem(value: 'add_group', child: Text('添加分组')),
-                ],
-              ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('书架'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () => Navigator.pushNamed(context, '/search'),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (action) => _handleMenuAction(action),
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'refresh', child: Text('刷新')),
+              const PopupMenuItem(value: 'add_group', child: Text('添加分组')),
             ],
           ),
-          body: Column(
-            children: [
-              // Group filter tabs
-              if (tabNames.length > 1)
-                Container(
-                  height: 40,
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    itemCount: tabNames.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (context, index) {
-                      final name = tabNames[index];
-                      final isSelected = (index == 0 && provider.selectedGroup == null) ||
-                          (name == provider.selectedGroup);
-                      return ChoiceChip(
-                        label: Text(name),
-                        selected: isSelected,
-                        onSelected: (_) {
-                          provider.selectGroup(index == 0 ? null : name);
-                        },
-                        visualDensity: VisualDensity.compact,
-                        selectedColor: const Color(0xFF009688).withOpacity(0.2),
-                      );
+        ],
+      ),
+      body: Column(
+        children: [
+          if (tabNames.length > 1)
+            Container(
+              height: 40,
+              color: Theme.of(context).scaffoldBackgroundColor,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                itemCount: tabNames.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final name = tabNames[index];
+                  final isSelected = (index == 0 && provider.selectedGroup == null) ||
+                      (name == provider.selectedGroup);
+                  return ChoiceChip(
+                    label: Text(name),
+                    selected: isSelected,
+                    onSelected: (_) {
+                      provider.selectGroup(index == 0 ? null : name);
                     },
-                  ),
-                ),
-              // Book grid
-              Expanded(
-                child: _buildBookGrid(provider),
+                    visualDensity: VisualDensity.compact,
+                    selectedColor: const Color(0xFF009688).withOpacity(0.2),
+                  );
+                },
               ),
-            ],
+            ),
+          Expanded(
+            child: _buildBookGrid(provider),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
