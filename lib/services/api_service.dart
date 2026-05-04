@@ -330,17 +330,6 @@ class ApiService {
     }
     return [];
   }
-      'accessToken': accessToken,
-      'page': page,
-    };
-    if (md5 != null) params['md5'] = md5;
-    final resp = await _dio.get('/getRssSourcessNew', queryParameters: params);
-    final data = resp.data['data'];
-    if (data is List) {
-      return data.map((e) => RssSource.fromJson(e as Map<String, dynamic>)).toList();
-    }
-    return [];
-  }
 
   Future<List<RssArticle>> getRssArticles(String accessToken, String sourceId, {String? sortUrl, int page = 1}) async {
     final params = <String, dynamic>{
