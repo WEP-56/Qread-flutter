@@ -5,6 +5,7 @@ import 'providers/user_provider.dart';
 import 'providers/bookshelf_provider.dart';
 import 'providers/discover_provider.dart';
 import 'providers/rss_provider.dart';
+import 'providers/reader_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +23,7 @@ class QreadApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => BookshelfProvider()),
         ChangeNotifierProvider(create: (_) => DiscoverProvider()),
         ChangeNotifierProvider(create: (_) => RssProvider()),
+        ChangeNotifierProvider(create: (_) => ReaderProvider()),
       ],
       child: const App(),
     );

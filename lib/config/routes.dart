@@ -20,11 +20,20 @@ class AppRoutes {
   static final Map<String, WidgetBuilder> routes = {
     home: (_) => const HomePage(),
     login: (_) => const LoginPage(),
-    reader: (_) => const ReaderPage(),
     search: (_) => const SearchPage(),
     sourceManage: (_) => const SourceManagePage(),
     rssSource: (_) => const RssSourcePage(),
   };
+
+  static Route<dynamic>? onGenerateRoute(RouteSettings settings) {
+    if (settings.name == reader) {
+      return MaterialPageRoute(
+        settings: settings, // pass settings to preserve arguments
+        builder: (_) => const ReaderPage(),
+      );
+    }
+    return null;
+  }
 }
 
 class HomePage extends StatefulWidget {

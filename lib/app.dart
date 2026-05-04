@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'config/theme.dart';
 import 'config/routes.dart';
-import 'providers/user_provider.dart';
-import 'package:provider/provider.dart';
 
 class App extends StatefulWidget {
   const App({Key? key}) : super(key: key);
@@ -24,6 +22,7 @@ class _AppState extends State<App> {
       themeMode: _themeMode,
       initialRoute: '/',
       routes: AppRoutes.routes,
+      onGenerateRoute: AppRoutes.onGenerateRoute,
     );
   }
 }

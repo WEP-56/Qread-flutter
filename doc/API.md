@@ -2305,6 +2305,80 @@
 
 ---
 
+## BookMarkController（3个）
+
+### 添加书签
+**路径**: `/api/{v}/addbookmark`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| accessToken | String | 是 | 访问令牌 |
+| url | String | 是 | 书籍URL |
+| name | String | 是 | 书签名称 |
+| index | Integer | 是 | 章节索引 |
+| pos | Double | 是 | 章节内位置 |
+
+**错误码**: `MARK_IS` 书签已存在
+
+**代码位置**: `BookMarkController.kt:30-50`
+
+---
+
+### 获取书签
+**路径**: `/api/{v}/getbookmark`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| accessToken | String | 是 | 访问令牌 |
+| url | String | 是 | 书籍URL |
+
+**代码位置**: `BookMarkController.kt:53-62`
+
+---
+
+### 删除书签
+**路径**: `/api/{v}/delbookmark`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| accessToken | String | 是 | 访问令牌 |
+| id | String | 是 | 书签ID |
+
+**代码位置**: `BookMarkController.kt:64-76`
+
+---
+
+## ItemController（2个）
+
+### 获取KV配置
+**路径**: `/api/{v}/getitem`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| accessToken | String | 是 | 访问令牌 |
+| name | String | 是 | 配置键名 |
+
+**响应**: `data` 为配置值字符串，不存在时为 null
+
+> 前端用此接口保存/获取用户配置（阅读设置、主题偏好等），实现多端同步
+
+**代码位置**: `ItemController.kt:23-31`
+
+---
+
+### 保存KV配置
+**路径**: `/api/{v}/setitem`
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| accessToken | String | 是 | 访问令牌 |
+| name | String | 是 | 配置键名 |
+| value | String | 是 | 配置值 |
+
+**代码位置**: `ItemController.kt:33-43`
+
+---
+
 ## 接口统计
 
 | 控制器 | API数量 |
@@ -2320,4 +2394,6 @@
 | BookGroupController | 7 |
 | LocalBookController | 2 |
 | GroundController | 6 |
-| **总计** | **152** |
+| BookMarkController | 3 |
+| ItemController | 2 |
+| **总计** | **157** |

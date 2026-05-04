@@ -61,39 +61,65 @@ class ApiService {
 
   // ============ 书架 ============
 
-  Future<Map<String, dynamic>> getBookshelfPage(String accessToken, {int page = 1}) async {
-    final resp = await _dio.get('/getBookshelfsPage', queryParameters: {
+  Future<Map<String, dynamic>> getBookshelfPage(String accessToken) async {
+    final resp = await _dio.get('/getBookshelfPage', queryParameters: {
       'accessToken': accessToken,
     });
     return resp.data;
   }
 
-  Future<List<Book>> getBookshelfNew(String accessToken, {int page = 1, int size = AppConstants.pageSize}) async {
-    final resp = await _dio.get('/getBookshelfsNew', queryParameters: {
+  Future<List<Book>> getBookshelfNew(String accessToken, {String? md5, int page = 1}) async {
+    final params = <String, dynamic>{
       'accessToken': accessToken,
-      'page': page,
-      'size': size,
-    });
-    return (resp.data['data'] as List?)?.map((e) => Book.fromJson(e)).toList() ?? [];
+      'page': page.toString(),
+    };
+    if (md5 != null) params['md5'] = md5;
+    final resp = await _dio.get('/getBookshelfNew', queryParameters: params);
+    final data = resp.data['data'];
+    if (data is List) {
+      return data.map((e) => Book.fromJson(e as Map<String, dynamic>)).toList();
+    }
+    return [];
   }
 
-  Future<Map<String, dynamic>> saveBookProgress(String accessToken, Book book) async {
+  Future<Map<String, dynamic>> saveBookProgress(
+    String accessToken, {
+    String? url,
+    String? title,
+    int? index,
+    double? pos,
+    String? isnew,
+  }) async {
     final resp = await _dio.post('/saveBookProgress', queryParameters: {
       'accessToken': accessToken,
-      'name': book.name,
-      'author': book.author,
-      'durChapterIndex': book.durChapterIndex ?? 0,
-      'durChapterPos': book.durChapterPos ?? 0,
-      'durChapterTitle': book.durChapterTitle ?? '',
+      if (url != null) 'url': url,
+      if (title != null) 'title': title,
+      if (index != null) 'index': index,
+      if (pos != null) 'pos': pos,
+      if (isnew != null) 'isnew': isnew,
+    });
+    return resp.data;
+  }
+
+  Future<String> getBookread(String accessToken, String url) async {
+    final resp = await _dio.get('/getBookread', queryParameters: {
+      'accessToken': accessToken,
+      'url': url,
+    });
+    return resp.data['data']?.toString() ?? '';
+  }
+
+  Future<Map<String, dynamic>> addreadchapter(String accessToken, String readchapter, String url) async {
+    final resp = await _dio.post('/addreadchapter', queryParameters: {
+      'accessToken': accessToken,
+      'readchapter': readchapter,
+      'url': url,
     });
     return resp.data;
   }
 
   Future<Map<String, dynamic>> deleteBooks(String accessToken, List<String> ids) async {
-    final resp = await _dio.post('/deleteBooks', queryParameters: {
-      'accessToken': accessToken,
-      'ids': ids.join(','),
-    });
+    final resp = await _dio.post('/deleteBooks', data: ids);
     return resp.data;
   }
 
@@ -116,32 +142,78 @@ class ApiService {
     });
     final data = resp.data['data'];
     if (data is List) {
-      return data.map((e) => Chapter.fromJson(e)).toList();
+      return data.map((e) => Chapter.fromJson(e as Map<String, dynamic>)).toList();
     }
     return [];
   }
 
-  Future<Map<String, dynamic>> getBookContent(String accessToken, String bookUrl, int chapterIndex, String sourceUrl) async {
+  Future<List<Chapter>> getChapterListNew(
+    String accessToken,
+    String bookUrl,
+    String sourceUrl, {
+    String? bookname,
+    int? useReplaceRule,
+    int? needRefresh,
+  }) async {
+    final resp = await _dio.get('/getChapterListNew', queryParameters: {
+      'accessToken': accessToken,
+      'url': bookUrl,
+      'bookSourceUrl': sourceUrl,
+      if (bookname != null) 'bookname': bookname,
+      if (useReplaceRule != null) 'useReplaceRule': useReplaceRule,
+      if (needRefresh != null) 'needRefresh': needRefresh,
+    });
+    final data = resp.data['data'];
+    if (data is List) {
+      return data.map((e) => Chapter.fromJson(e as Map<String, dynamic>)).toList();
+    }
+    return [];
+  }
+
+  Future<String> getBookContent(String accessToken, String bookUrl, int chapterIndex, String sourceUrl) async {
     final resp = await _dio.get('/getBookContent', queryParameters: {
       'accessToken': accessToken,
       'url': bookUrl,
       'index': chapterIndex,
       'source': sourceUrl,
     });
-    return resp.data;
+    return resp.data['data']?.toString() ?? '';
+  }
+
+  Future<Map<String, dynamic>> getBookContentNew(
+    String accessToken,
+    String bookUrl,
+    int chapterIndex,
+    String sourceUrl, {
+    int? type,
+    String? bookname,
+    int? useReplaceRule,
+  }) async {
+    final resp = await _dio.get('/getBookContentNew', queryParameters: {
+      'accessToken': accessToken,
+      'url': bookUrl,
+      'index': chapterIndex,
+      'bookSourceUrl': sourceUrl,
+      if (type != null) 'type': type,
+      if (bookname != null) 'bookname': bookname,
+      if (useReplaceRule != null) 'useReplaceRule': useReplaceRule,
+    });
+    return resp.data['data'] ?? {};
   }
 
   // ============ 搜索 ============
 
-  Future<List<SearchResult>> searchBook(String accessToken, String keyword, {int page = 1}) async {
-    final resp = await _dio.get('/searchBook', queryParameters: {
+  Future<List<SearchResult>> searchBook(String accessToken, String keyword, {String? bookSourceUrl, int page = 1}) async {
+    final params = <String, dynamic>{
       'accessToken': accessToken,
       'key': keyword,
       'page': page,
-    });
+    };
+    if (bookSourceUrl != null) params['bookSourceUrl'] = bookSourceUrl;
+    final resp = await _dio.get('/searchBook', queryParameters: params);
     final data = resp.data['data'];
     if (data is List) {
-      return data.map((e) => SearchResult.fromJson(e)).toList();
+      return data.map((e) => SearchResult.fromJson(e as Map<String, dynamic>)).toList();
     }
     return [];
   }
@@ -149,11 +221,20 @@ class ApiService {
   // ============ 发现 ============
 
   Future<Map<String, dynamic>> getExplore(String accessToken, String sourceUrl, String exploreUrl, {int page = 1}) async {
-    final resp = await _dio.get('/getExplore', queryParameters: {
+    final resp = await _dio.get('/exploreBook', queryParameters: {
       'accessToken': accessToken,
-      'source': sourceUrl,
-      'url': exploreUrl,
+      'bookSourceUrl': sourceUrl,
       'page': page,
+      'ruleFindUrl': exploreUrl,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> getBookSourcesExploreUrl(String accessToken, String bookSourceUrl, {int need = 1}) async {
+    final resp = await _dio.get('/getBookSourcesExploreUrl', queryParameters: {
+      'accessToken': accessToken,
+      'bookSourceUrl': bookSourceUrl,
+      'need': need,
     });
     return resp.data;
   }
@@ -167,13 +248,18 @@ class ApiService {
     return resp.data;
   }
 
-  Future<List<BookSource>> getBookSourcesNew(String accessToken, {int page = 1, int size = AppConstants.pageSize}) async {
-    final resp = await _dio.get('/getBookSourcesNew', queryParameters: {
+  Future<List<BookSource>> getBookSourcesNew(String accessToken, {String? md5, int page = 1}) async {
+    final params = <String, dynamic>{
       'accessToken': accessToken,
-      'page': page,
-      'size': size,
-    });
-    return (resp.data['data'] as List?)?.map((e) => BookSource.fromJson(e)).toList() ?? [];
+      'page': page.toString(),
+    };
+    if (md5 != null) params['md5'] = md5;
+    final resp = await _dio.get('/getBookSourcesNew', queryParameters: params);
+    final data = resp.data['data'];
+    if (data is List) {
+      return data.map((e) => BookSource.fromJson(e as Map<String, dynamic>)).toList();
+    }
+    return [];
   }
 
   Future<Map<String, dynamic>> saveBookSources(String accessToken, String source) async {
@@ -243,30 +329,75 @@ class ApiService {
   // ============ 分组 ============
 
   Future<List<BookGroup>> getBookGroups(String accessToken) async {
-    final resp = await _dio.get('/getBookGroups', queryParameters: {
+    final resp = await _dio.get('/getgroup', queryParameters: {
       'accessToken': accessToken,
     });
     final data = resp.data['data'];
     if (data is List) {
-      return data.map((e) => BookGroup.fromJson(e)).toList();
+      return data.map((e) => BookGroup.fromJson(e as Map<String, dynamic>)).toList();
     }
     return [];
   }
 
-  Future<Map<String, dynamic>> saveBookGroup(String accessToken, String name, {int? groupId}) async {
-    final resp = await _dio.post('/saveBookGroup', queryParameters: {
+  Future<List<BookGroup>> getgroupNew(String accessToken, String md5) async {
+    final resp = await _dio.get('/getgroupNew', queryParameters: {
+      'accessToken': accessToken,
+      'md5': md5,
+    });
+    final data = resp.data['data'];
+    if (data is List) {
+      return data.map((e) => BookGroup.fromJson(e as Map<String, dynamic>)).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> addgroup(String accessToken, String name) async {
+    final resp = await _dio.post('/addgroup', queryParameters: {
       'accessToken': accessToken,
       'name': name,
-      if (groupId != null) 'groupId': groupId,
     });
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> deleteBookGroup(String accessToken, int groupId) async {
-    final resp = await _dio.post('/deleteBookGroup', queryParameters: {
+  Future<Map<String, dynamic>> delgroup(String accessToken, String name) async {
+    final resp = await _dio.post('/delgroup', queryParameters: {
       'accessToken': accessToken,
-      'groupId': groupId,
+      'name': name,
     });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> editgroup(String accessToken, String oldname, String newname) async {
+    final resp = await _dio.post('/editgroup', queryParameters: {
+      'accessToken': accessToken,
+      'oldname': oldname,
+      'newname': newname,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> ordergroup(String accessToken, List<String> groups) async {
+    final resp = await _dio.post('/ordergroup', queryParameters: {
+      'accessToken': accessToken,
+      'groups': groups,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> setgroup(String accessToken, {String? name, required String url}) async {
+    final resp = await _dio.post('/setgroup', queryParameters: {
+      'accessToken': accessToken,
+      if (name != null) 'name': name,
+      'url': url,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> setgroups(String accessToken, {String? name, required List<String> ids}) async {
+    final resp = await _dio.post('/setgroups', queryParameters: {
+      'accessToken': accessToken,
+      if (name != null) 'name': name,
+    }, data: ids);
     return resp.data;
   }
 
@@ -309,19 +440,34 @@ class ApiService {
 
   // ============ 书籍操作 ============
 
-  Future<Map<String, dynamic>> saveBook(String accessToken, Book book) async {
+  Future<Map<String, dynamic>> saveBook(String accessToken, Book book, {int useReplaceRule = 0}) async {
     final resp = await _dio.post('/saveBook', queryParameters: {
       'accessToken': accessToken,
-      'bookUrl': book.bookUrl,
-      'name': book.name,
-      'author': book.author,
-      'coverUrl': book.coverUrl,
-      'intro': book.intro,
-      'tocUrl': book.tocUrl,
-      'origin': book.origin,
-      'originName': book.originName,
-      'type': book.type ?? 0,
-      'group': book.group ?? 0,
+      'useReplaceRule': useReplaceRule,
+    }, data: book.toJson());
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> deleteBook(String accessToken, Book book) async {
+    final resp = await _dio.post('/deleteBook', queryParameters: {
+      'accessToken': accessToken,
+    }, data: book.toJson());
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> refreshBook(String accessToken, String bookUrl) async {
+    final resp = await _dio.get('/refreshBook', queryParameters: {
+      'accessToken': accessToken,
+      'bookurl': bookUrl,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> changeBookType(String accessToken, String bookUrl, int type) async {
+    final resp = await _dio.get('/changebooktype', queryParameters: {
+      'accessToken': accessToken,
+      'bookUrl': bookUrl,
+      'type': type,
     });
     return resp.data;
   }
