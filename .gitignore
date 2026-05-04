@@ -57,6 +57,5 @@ Thumbs.db
 *.keystore
 *.jks
 
-# Generated
-*.g.dart
-*.freezed.dart
+# Generated (build_runner output - not used, we write manually)
+# *.g.dart and *.freezed.dart are committed as they are handwritten
