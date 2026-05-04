@@ -26,7 +26,7 @@ class ApiService {
   static ApiService get instance => _instance ??= ApiService._();
 
   void setToken(String token) {
-    _dio.options.headers['Authorization'] = 'Bearer $token';
+    // 后端通过 accessToken 查询参数认证，不需要 Bearer header
   }
 
   void setBaseUrl(String url) {
@@ -45,7 +45,8 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> register(String username, String password) async {
-    final resp = await _dio.post('/register', data: {
+    // 后端没有独立的注册接口，注册也走 /login
+    final resp = await _dio.post('/login', data: {
       'username': username,
       'password': password,
     });
@@ -53,7 +54,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getUserInfo(String accessToken) async {
-    final resp = await _dio.get('/getuserinfo', queryParameters: {
+    final resp = await _dio.get('/getUserInfo', queryParameters: {
       'accessToken': accessToken,
     });
     return resp.data;
@@ -126,7 +127,7 @@ class ApiService {
   // ============ 书籍 ============
 
   Future<Map<String, dynamic>> getBookInfo(String accessToken, String bookUrl, String sourceUrl) async {
-    final resp = await _dio.get('/getBookInfo', queryParameters: {
+    final resp = await _dio.get('/getBookinfo', queryParameters: {
       'accessToken': accessToken,
       'url': bookUrl,
       'source': sourceUrl,
@@ -271,7 +272,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> deleteBookSources(String accessToken, List<String> urls) async {
-    final resp = await _dio.post('/deleteBookSources', queryParameters: {
+    final resp = await _dio.post('/delbookSources', queryParameters: {
       'accessToken': accessToken,
       'urls': urls.join(','),
     });
@@ -297,7 +298,7 @@ class ApiService {
   }
 
   Future<List<RssArticle>> getRssArticles(String accessToken, String sourceUrl, {int page = 1}) async {
-    final resp = await _dio.get('/getRssArticles', queryParameters: {
+    final resp = await _dio.get('/getArticles', queryParameters: {
       'accessToken': accessToken,
       'source': sourceUrl,
       'page': page,
@@ -431,7 +432,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> deleteReplaceRule(String accessToken, int id) async {
-    final resp = await _dio.post('/deleteReplaceRule', queryParameters: {
+    final resp = await _dio.post('/delReplaceRule', queryParameters: {
       'accessToken': accessToken,
       'id': id,
     });

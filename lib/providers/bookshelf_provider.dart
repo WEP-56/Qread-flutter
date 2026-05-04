@@ -71,8 +71,9 @@ class BookshelfProvider extends ChangeNotifier {
       // Step 1: Get page info (md5 + total pages)
       if (_md5 == null) {
         final pageData = await ApiService.instance.getBookshelfPage(accessToken);
-        _md5 = pageData['md5']?.toString();
-        _totalPages = int.tryParse(pageData['page']?.toString() ?? '1') ?? 1;
+        final data = pageData['data'] ?? pageData;
+        _md5 = data['md5']?.toString();
+        _totalPages = int.tryParse(data['page']?.toString() ?? '1') ?? 1;
 
         // Also load groups
         if (_md5 != null) {
