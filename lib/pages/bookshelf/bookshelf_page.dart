@@ -15,10 +15,18 @@ class _BookshelfPageState extends State<BookshelfPage> with AutomaticKeepAliveCl
   @override
   bool get wantKeepAlive => true;
 
+  bool _dataLoaded = false;
+
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadData());
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isLoggedIn = context.watch<UserProvider>().isLoggedIn;
+    if (isLoggedIn && !_dataLoaded) {
+      _dataLoaded = true;
+      _loadData();
+    } else if (!isLoggedIn) {
+      _dataLoaded = false;
+    }
   }
 
   void _loadData() {
@@ -26,7 +34,6 @@ class _BookshelfPageState extends State<BookshelfPage> with AutomaticKeepAliveCl
     if (token != null) {
       final provider = context.read<BookshelfProvider>();
       provider.loadBookshelf(token, refresh: true);
-      provider.loadGroups(token);
     }
   }
 
@@ -43,8 +50,26 @@ class _BookshelfPageState extends State<BookshelfPage> with AutomaticKeepAliveCl
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    return Consumer<BookshelfProvider>(
-      builder: (context, provider, _) {
+    return Consumer2<UserProvider, BookshelfProvider>(
+      builder: (context, userProvider, provider, _) {
+        if (!userProvider.isLoggedIn) {
+          return Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.menu_book, size: 64, color: Colors.grey),
+                const SizedBox(height: 16),
+                const Text('请先登录'),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () => Navigator.pushNamed(context, '/login'),
+                  child: const Text('去登录'),
+                ),
+              ],
+            ),
+          );
+        }
+
         final tabNames = _getTabNames(provider);
 
         return Scaffold(
@@ -144,6 +169,8 @@ class _BookshelfPageState extends State<BookshelfPage> with AutomaticKeepAliveCl
   void _handleMenuAction(String action) {
     switch (action) {
       case 'refresh':
+        _dataLoaded = false;
+        context.read<BookshelfProvider>().selectGroup(null);
         _loadData();
         break;
       case 'add_group':

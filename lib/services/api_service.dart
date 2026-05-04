@@ -288,24 +288,31 @@ class ApiService {
     return resp.data;
   }
 
-  Future<List<RssSource>> getRssSourcesNew(String accessToken, {int page = 1, int size = AppConstants.pageSize}) async {
-    final resp = await _dio.get('/getRssSourcessNew', queryParameters: {
+  Future<List<RssSource>> getRssSourcesNew(String accessToken, {String? md5, int page = 1}) async {
+    final params = <String, dynamic>{
       'accessToken': accessToken,
       'page': page,
-      'size': size,
-    });
-    return (resp.data['data'] as List?)?.map((e) => RssSource.fromJson(e)).toList() ?? [];
-  }
-
-  Future<List<RssArticle>> getRssArticles(String accessToken, String sourceUrl, {int page = 1}) async {
-    final resp = await _dio.get('/getArticles', queryParameters: {
-      'accessToken': accessToken,
-      'source': sourceUrl,
-      'page': page,
-    });
+    };
+    if (md5 != null) params['md5'] = md5;
+    final resp = await _dio.get('/getRssSourcessNew', queryParameters: params);
     final data = resp.data['data'];
     if (data is List) {
-      return data.map((e) => RssArticle.fromJson(e)).toList();
+      return data.map((e) => RssSource.fromJson(e as Map<String, dynamic>)).toList();
+    }
+    return [];
+  }
+
+  Future<List<RssArticle>> getRssArticles(String accessToken, String sourceId, {String? sortUrl, int page = 1}) async {
+    final params = <String, dynamic>{
+      'accessToken': accessToken,
+      'id': sourceId,
+      'page': page,
+    };
+    if (sortUrl != null) params['sortUrl'] = sortUrl;
+    final resp = await _dio.get('/getArticles', queryParameters: params);
+    final data = resp.data['data'];
+    if (data is List) {
+      return data.map((e) => RssArticle.fromJson(e as Map<String, dynamic>)).toList();
     }
     return [];
   }

@@ -116,7 +116,19 @@ class BookshelfProvider extends ChangeNotifier {
 
   Future<void> loadGroups(String accessToken) async {
     try {
-      _groups = await ApiService.instance.getBookGroups(accessToken);
+      // 先获取 md5，再用 getgroupNew
+      if (_md5 != null) {
+        _groups = await ApiService.instance.getgroupNew(accessToken, _md5!);
+      } else {
+        final pageData = await ApiService.instance.getBookshelfPage(accessToken);
+        final data = pageData['data'] ?? pageData;
+        final md5 = data['md5']?.toString();
+        if (md5 != null) {
+          _groups = await ApiService.instance.getgroupNew(accessToken, md5);
+        } else {
+          _groups = await ApiService.instance.getBookGroups(accessToken);
+        }
+      }
       notifyListeners();
     } catch (e) {
       _error = e.toString();

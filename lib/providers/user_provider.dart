@@ -43,7 +43,6 @@ class UserProvider extends ChangeNotifier {
         _username = username;
         final storage = await StorageService.instance;
         await storage.setToken(_token!);
-        ApiService.instance.setToken(_token!);
         _loading = false;
         notifyListeners();
         return true;

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/discover_provider.dart';
 import '../../providers/user_provider.dart';
+import '../../services/api_service.dart';
 import '../../models/book_source.dart';
 
 class DiscoverPage extends StatefulWidget {
@@ -15,10 +16,18 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   @override
   bool get wantKeepAlive => true;
 
+  bool _dataLoaded = false;
+
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSources());
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isLoggedIn = context.watch<UserProvider>().isLoggedIn;
+    if (isLoggedIn && !_dataLoaded) {
+      _dataLoaded = true;
+      _loadSources();
+    } else if (!isLoggedIn) {
+      _dataLoaded = false;
+    }
   }
 
   void _loadSources() {
@@ -41,10 +50,25 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
           ),
         ],
       ),
-      body: Consumer<DiscoverProvider>(
-        builder: (context, provider, _) {
+      body: Consumer2<UserProvider, DiscoverProvider>(
+        builder: (context, userProvider, provider, _) {
+          if (!userProvider.isLoggedIn) {
+            return const Center(child: Text('请先登录'));
+          }
           if (provider.loading && provider.exploreSources.isEmpty) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (provider.error != null && provider.exploreSources.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(provider.error!, style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 16),
+                  ElevatedButton(onPressed: _loadSources, child: const Text('重试')),
+                ],
+              ),
+            );
           }
           if (provider.exploreSources.isEmpty) {
             return const Center(child: Text('暂无发现源，请先导入书源'));
@@ -56,24 +80,30 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
             groups.putIfAbsent(group, () => []).add(source);
           }
 
-          return ListView.builder(
-            itemCount: groups.length,
-            itemBuilder: (context, index) {
-              final group = groups.keys.elementAt(index);
-              final sources = groups[group]!;
-              return ExpansionTile(
-                title: Text(group),
-                initiallyExpanded: index == 0,
-                children: sources.map((source) {
-                  return ListTile(
-                    title: Text(source.bookSourceName ?? ''),
-                    subtitle: Text(source.bookSourceUrl ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _showExplore(source),
-                  );
-                }).toList(),
-              );
+          return RefreshIndicator(
+            onRefresh: () async {
+              _dataLoaded = false;
+              _loadSources();
             },
+            child: ListView.builder(
+              itemCount: groups.length,
+              itemBuilder: (context, index) {
+                final group = groups.keys.elementAt(index);
+                final sources = groups[group]!;
+                return ExpansionTile(
+                  title: Text(group),
+                  initiallyExpanded: index == 0,
+                  children: sources.map((source) {
+                    return ListTile(
+                      title: Text(source.bookSourceName ?? ''),
+                      subtitle: Text(source.bookSourceUrl ?? '', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _showExplore(source),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
           );
         },
       ),
@@ -81,56 +111,91 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
   }
 
   void _showExplore(BookSource source) {
-    final exploreUrl = source.exploreUrl;
-    if (exploreUrl == null || exploreUrl.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('该书源没有发现页')),
+    final accessToken = context.read<UserProvider>().token;
+    if (accessToken == null) return;
+
+    // 通过 API 获取发现分类
+    _showExploreCategories(source, accessToken);
+  }
+
+  Future<void> _showExploreCategories(BookSource source, String accessToken) async {
+    try {
+      final result = await ApiService.instance.getBookSourcesExploreUrl(
+        accessToken,
+        source.bookSourceUrl ?? '',
       );
-      return;
-    }
+      if (result['isSuccess'] != true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('获取发现分类失败')),
+          );
+        }
+        return;
+      }
 
-    final categories = exploreUrl.split('&&').map((e) {
-      final parts = e.split('::');
-      return MapEntry(parts.isNotEmpty ? parts[0] : '', parts.length > 1 ? parts[1] : parts[0]);
-    }).toList();
+      final data = result['data'];
+      final found = data?['found'] as String? ?? source.exploreUrl ?? '';
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.3,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (context, controller) => Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(source.bookSourceName ?? '发现', style: Theme.of(context).textTheme.titleLarge),
-            ),
-            Expanded(
-              child: ListView.builder(
-                controller: controller,
-                itemCount: categories.length,
-                itemBuilder: (context, index) {
-                  return ListTile(
-                    title: Text(categories[index].key),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _navigateToExplore(source, categories[index].value, categories[index].key);
-                    },
-                  );
-                },
+      if (found.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('该书源没有发现页')),
+          );
+        }
+        return;
+      }
+
+      final categories = found.split('&&').map((e) {
+        final parts = e.split('::');
+        return MapEntry(parts.isNotEmpty ? parts[0] : '', parts.length > 1 ? parts[1] : parts[0]);
+      }).toList();
+
+      if (!mounted) return;
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) => DraggableScrollableSheet(
+          initialChildSize: 0.5,
+          minChildSize: 0.3,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, controller) => Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(source.bookSourceName ?? '发现', style: Theme.of(context).textTheme.titleLarge),
               ),
-            ),
-          ],
+              Expanded(
+                child: ListView.builder(
+                  controller: controller,
+                  itemCount: categories.length,
+                  itemBuilder: (context, index) {
+                    return ListTile(
+                      title: Text(categories[index].key),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _navigateToExplore(source, categories[index].value, categories[index].key);
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载失败: $e')),
+        );
+      }
+    }
   }
 
   void _navigateToExplore(BookSource source, String url, String title) {
-    // TODO: 导航到发现详情页
+    // TODO: 导航到发现详情页，展示 exploreBook 结果
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('打开发现: $title')),
     );

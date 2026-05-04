@@ -15,10 +15,18 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
 
+  bool _dataLoaded = false;
+
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSources());
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final isLoggedIn = context.watch<UserProvider>().isLoggedIn;
+    if (isLoggedIn && !_dataLoaded) {
+      _dataLoaded = true;
+      _loadSources();
+    } else if (!isLoggedIn) {
+      _dataLoaded = false;
+    }
   }
 
   void _loadSources() {
@@ -41,10 +49,25 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
           ),
         ],
       ),
-      body: Consumer<RssProvider>(
-        builder: (context, provider, _) {
+      body: Consumer2<UserProvider, RssProvider>(
+        builder: (context, userProvider, provider, _) {
+          if (!userProvider.isLoggedIn) {
+            return const Center(child: Text('请先登录'));
+          }
           if (provider.loading && provider.sources.isEmpty) {
             return const Center(child: CircularProgressIndicator());
+          }
+          if (provider.error != null && provider.sources.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(provider.error!, style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 16),
+                  ElevatedButton(onPressed: _loadSources, child: const Text('重试')),
+                ],
+              ),
+            );
           }
           if (provider.sources.isEmpty) {
             return Center(
@@ -71,7 +94,10 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
           }
 
           return RefreshIndicator(
-            onRefresh: () async => _loadSources(),
+            onRefresh: () async {
+              _dataLoaded = false;
+              _loadSources();
+            },
             child: ListView(
               children: groups.entries.map((entry) {
                 return Column(
