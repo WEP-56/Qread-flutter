@@ -9,6 +9,8 @@ import '../pages/login/login_page.dart';
 import '../pages/source/source_manage_page.dart';
 import '../pages/rss/rss_source_page.dart';
 import '../pages/discover/explore_books_page.dart';
+import '../pages/rss/rss_article_list_page.dart';
+import '../pages/rss/rss_article_detail_page.dart';
 
 class AppRoutes {
   static const String home = '/';
@@ -18,6 +20,8 @@ class AppRoutes {
   static const String sourceManage = '/sourceManage';
   static const String rssSource = '/rssSource';
   static const String discoverExplore = '/discover/explore';
+  static const String rssArticles = '/rss/articles';
+  static const String rssArticleDetail = '/rss/article';
 
   static final Map<String, WidgetBuilder> routes = {
     home: (_) => const HomePage(),
@@ -39,6 +43,20 @@ class AppRoutes {
       return MaterialPageRoute(
         settings: settings,
         builder: (_) => ExploreBooksPage(args: args),
+      );
+    }
+    if (settings.name == rssArticles) {
+      final args = settings.arguments as RssArticleListPageArgs;
+      return MaterialPageRoute(
+        settings: settings,
+        builder: (_) => RssArticleListPage(args: args),
+      );
+    }
+    if (settings.name == rssArticleDetail) {
+      final args = settings.arguments as RssArticleDetailPageArgs;
+      return MaterialPageRoute(
+        settings: settings,
+        builder: (_) => RssArticleDetailPage(args: args),
       );
     }
     return null;

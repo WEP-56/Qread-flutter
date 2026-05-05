@@ -491,19 +491,32 @@ class ApiService {
 
   /// Fallback: 直接获取RSS源列表（无缓存）
   Future<List<RssSource>> getRssSources(String accessToken) async {
+    final raw = await getRssSourcesRaw(accessToken);
+    final json = raw['json'];
+    final data = json['data'];
+    final sourcesList = data is Map ? data['sources'] : data;
+    if (json['isSuccess'] == true && sourcesList is List) {
+      return sourcesList.map((e) => RssSource.fromJson(e as Map<String, dynamic>)).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> getRssSourcesRaw(String accessToken) async {
     final resp = await _dio.get('/getRssSourcess', queryParameters: {
       'accessToken': accessToken,
     });
     final json = resp.data;
-    if (json['isSuccess'] == true && json['data'] is List) {
-      // getRssSourcess 返回 {sources: [...], can: ...}
-      final data = json['data'];
-      final sourcesList = data is Map ? data['sources'] : data;
-      if (sourcesList is List) {
-        return sourcesList.map((e) => RssSource.fromJson(e as Map<String, dynamic>)).toList();
-      }
-    }
-    return [];
+    final data = json['data'];
+    final canEdit = data is Map ? data['can'] == true : false;
+    return {
+      'json': json,
+      'canEdit': canEdit,
+    };
+  }
+
+  Future<bool> getRssCanEdit(String accessToken) async {
+    final raw = await getRssSourcesRaw(accessToken);
+    return raw['canEdit'] == true;
   }
 
   Future<List<RssArticle>> getRssArticles(String accessToken, String sourceId, {String? sortUrl, int page = 1}) async {
@@ -515,10 +528,138 @@ class ApiService {
     if (sortUrl != null) params['sortUrl'] = sortUrl;
     final resp = await _dio.get('/getArticles', queryParameters: params);
     final data = resp.data['data'];
-    if (data is List) {
-      return data.map((e) => RssArticle.fromJson(e as Map<String, dynamic>)).toList();
+    final articles = data is Map ? data['articles'] : data;
+    if (articles is List) {
+      return articles.map((e) => RssArticle.fromJson(e as Map<String, dynamic>)).toList();
     }
     return [];
+  }
+
+  Future<Map<String, dynamic>> getRssArticlesPage(
+    String accessToken,
+    String sourceId, {
+    required String sortUrl,
+    required String sortName,
+    int page = 1,
+  }) async {
+    final resp = await _dio.get('/getArticles', queryParameters: {
+      'accessToken': accessToken,
+      'id': sourceId,
+      'sortUrl': sortUrl,
+      'sortName': sortName,
+      'page': page,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> getRssType(String accessToken, String id) async {
+    final resp = await _dio.get('/getRssType', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+    });
+    return resp.data;
+  }
+
+  Future<List<Map<String, String>>> getRsssortUrls(String accessToken, String id) async {
+    final resp = await _dio.get('/getRsssortUrls', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+    });
+    final data = resp.data['data'];
+    if (data is List) {
+      return data.map((e) {
+        final item = e as Map;
+        return {
+          'sortName': item['sortName']?.toString() ?? '',
+          'sortUrl': item['sortUrl']?.toString() ?? '',
+        };
+      }).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> getRssContent(
+    String accessToken, {
+    required String id,
+    required String article,
+  }) async {
+    final resp = await _dio.get('/getRssContent', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+      'article': article,
+    });
+    return resp.data;
+  }
+
+  Future<bool> rssshouldOverrideUrlLoading(
+    String accessToken, {
+    required String id,
+    required String url,
+  }) async {
+    final resp = await _dio.get('/rssshouldOverrideUrlLoading', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+      'url': url,
+    });
+    final data = resp.data['data'];
+    if (data is bool) return data;
+    if (data is String) return data == 'true' || data == '1';
+    if (data is num) return data != 0;
+    return false;
+  }
+
+  Future<Map<String, dynamic>> getRssLoginInfo(String accessToken, String id) async {
+    final resp = await _dio.get('/getRssLoginInfo', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> putRssLoginInfo(String accessToken, String id, String info) async {
+    final resp = await _dio.post('/putRssLoginInfo', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+      'info': info,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> rssaction(String accessToken, String id, String action) async {
+    final resp = await _dio.post('/rssaction', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+      'action': action,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> getRssVariable(String accessToken, String id) async {
+    final resp = await _dio.get('/getRssVariable', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> setRssVariable(String accessToken, String id, String info) async {
+    final resp = await _dio.post('/setRssVariable', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+      'info': info,
+    });
+    return resp.data;
+  }
+
+  Future<String> fetchRemoteText(String url, {Map<String, String>? headers}) async {
+    final resp = await Dio(BaseOptions(
+      connectTimeout: 15000,
+      receiveTimeout: 15000,
+      responseType: ResponseType.plain,
+      followRedirects: true,
+      headers: headers,
+    )).get<String>(url);
+    return resp.data?.toString() ?? '';
   }
 
   Future<Map<String, dynamic>> saveRssSources(String accessToken, {String? source, String? urls}) async {
@@ -534,6 +675,112 @@ class ApiService {
     final resp = await _dio.post('/delRssSources', queryParameters: {
       'accessToken': accessToken,
       'urls': urls.join(','),
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> editRssSources(String accessToken, {String? id, required String json}) async {
+    final resp = await _dio.post('/editRssSources',
+        queryParameters: {'accessToken': accessToken},
+        data: {'id': id, 'json': json});
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> delRssSource(String accessToken, String id) async {
+    final resp = await _dio.post('/delRssSource', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> delRssSources(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/delRssSources',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> stopRssSource(String accessToken, String id, {required int st}) async {
+    final resp = await _dio.post('/stopRssSource', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+      'st': st,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> startRssSources(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/startRssSources',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> stopRssSources(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/stopRssSources',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> topRssSource(String accessToken, String id) async {
+    final resp = await _dio.post('/topRssSource', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> bottomRssSource(String accessToken, String id) async {
+    final resp = await _dio.post('/bottomRssSource', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> topallrssSource(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/topallrssSource',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> bottomallrssSource(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/bottomallrssSource',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> editrsssourcegroup(
+    String accessToken, {
+    required String st,
+    required String group,
+    required List<String> ids,
+  }) async {
+    final resp = await _dio.post('/editrsssourcegroup',
+        queryParameters: {
+          'accessToken': accessToken,
+          'st': st,
+          'group': group,
+        },
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> getRssSourcejson(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/getRssSourcejson',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> getRssSourcesloginui(String accessToken, String url) async {
+    final resp = await _dio.get('/getRssSourcesloginui', queryParameters: {
+      'accessToken': accessToken,
+      'url': url,
     });
     return resp.data;
   }

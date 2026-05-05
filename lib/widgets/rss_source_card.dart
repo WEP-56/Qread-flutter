@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../../models/rss_source.dart';
-import '../../services/api_service.dart';
+import '../config/routes.dart';
+import '../models/rss_source.dart';
+import '../pages/rss/rss_article_list_page.dart';
 
 class RssSourceCard extends StatelessWidget {
   final RssSource source;
@@ -14,7 +15,11 @@ class RssSourceCard extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: () {
-          // TODO: 打开RSS文章列表
+          Navigator.pushNamed(
+            context,
+            AppRoutes.rssArticles,
+            arguments: RssArticleListPageArgs(source: source),
+          );
         },
         child: Padding(
           padding: const EdgeInsets.all(12),

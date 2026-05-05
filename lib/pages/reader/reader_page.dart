@@ -79,7 +79,7 @@ class _ReaderPageState extends State<ReaderPage> {
     final book = ModalRoute.of(context)?.settings.arguments as Book?;
     if (book == null) return;
     _token = context.read<UserProvider>().token;
-    _isComic = book.type == 1;
+    _isComic = book.type == 2;
     final provider = context.read<ReaderProvider>();
     provider.setBook(book);
     provider.addListener(_onProviderChanged);
