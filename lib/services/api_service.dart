@@ -821,6 +821,62 @@ class ApiService {
     return resp.data;
   }
 
+  // ============ 书源登录 / 变量 / 动作 ============
+
+  Future<Map<String, dynamic>> getSourcesLoginInfo(String accessToken, String bookSourceUrl) async {
+    final resp = await _dio.get('/getLoginInfo', queryParameters: {
+      'accessToken': accessToken,
+      'bookSourceUrl': bookSourceUrl,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> putSourcesLoginInfo(String accessToken, String bookSourceUrl, String info) async {
+    final resp = await _dio.post('/putLoginInfo', queryParameters: {
+      'accessToken': accessToken,
+      'bookSourceUrl': bookSourceUrl,
+      'info': info,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> sourcesAction(
+    String accessToken, {
+    required String bookSourceUrl,
+    required String action,
+    String? info,
+    bool? chapter,
+    String? bookurl,
+  }) async {
+    final params = <String, dynamic>{
+      'accessToken': accessToken,
+      'bookSourceUrl': bookSourceUrl,
+      'action': action,
+    };
+    if (info != null) params['info'] = info;
+    if (chapter != null) params['chapter'] = chapter;
+    if (bookurl != null) params['bookurl'] = bookurl;
+    final resp = await _dio.post('/action', queryParameters: params);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> getSourcesVariable(String accessToken, String bookSourceUrl) async {
+    final resp = await _dio.get('/getVariable', queryParameters: {
+      'accessToken': accessToken,
+      'bookSourceUrl': bookSourceUrl,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> setSourcesVariable(String accessToken, String bookSourceUrl, String info) async {
+    final resp = await _dio.post('/setVariable', queryParameters: {
+      'accessToken': accessToken,
+      'bookSourceUrl': bookSourceUrl,
+      'info': info,
+    });
+    return resp.data;
+  }
+
   // ============ 分组 ============
 
   Future<List<BookGroup>> getBookGroups(String accessToken) async {
@@ -963,6 +1019,40 @@ class ApiService {
       'accessToken': accessToken,
       'bookUrl': bookUrl,
       'type': type,
+    });
+    return resp.data;
+  }
+
+  // ============ 书签 ============
+
+  Future<Map<String, dynamic>> addBookmark(String accessToken,
+      {required String url, required String name, required int index, required double pos}) async {
+    final resp = await _dio.post('/addbookmark', queryParameters: {
+      'accessToken': accessToken,
+      'url': url,
+      'name': name,
+      'index': index,
+      'pos': pos,
+    });
+    return resp.data;
+  }
+
+  Future<List<Map<String, dynamic>>> getBookmarks(String accessToken, String url) async {
+    final resp = await _dio.get('/getbookmark', queryParameters: {
+      'accessToken': accessToken,
+      'url': url,
+    });
+    final data = resp.data['data'];
+    if (data is List) {
+      return data.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> deleteBookmark(String accessToken, String id) async {
+    final resp = await _dio.post('/delbookmark', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
     });
     return resp.data;
   }

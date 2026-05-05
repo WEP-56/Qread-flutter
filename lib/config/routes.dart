@@ -6,10 +6,14 @@ import '../pages/profile/profile_page.dart';
 import '../pages/reader/reader_page.dart';
 import '../pages/search/search_page.dart';
 import '../pages/login/login_page.dart';
+import '../pages/login/source_login_page.dart';
+import '../pages/login/webview_login_page.dart';
 import '../pages/source/source_manage_page.dart';
 import '../pages/source/book_source_editor_page.dart';
+import '../pages/source/book_source_debug_page.dart';
 import '../pages/rss/rss_source_page.dart';
 import '../pages/rss/rss_source_editor_page.dart';
+import '../pages/rss/rss_source_debug_page.dart';
 import '../pages/discover/explore_books_page.dart';
 import '../pages/rss/rss_article_list_page.dart';
 import '../pages/rss/rss_article_detail_page.dart';
@@ -21,8 +25,12 @@ class AppRoutes {
   static const String search = '/search';
   static const String sourceManage = '/sourceManage';
   static const String bookSourceEditor = '/source/editor';
+  static const String sourceLogin = '/source/login';
+  static const String sourceWebLogin = '/source/weblogin';
+  static const String sourceDebug = '/source/debug';
   static const String rssSource = '/rssSource';
   static const String rssSourceEditor = '/rss/source/editor';
+  static const String rssSourceDebug = '/rss/source/debug';
   static const String discoverExplore = '/discover/explore';
   static const String rssArticles = '/rss/articles';
   static const String rssArticleDetail = '/rss/article';
@@ -75,6 +83,34 @@ class AppRoutes {
       return MaterialPageRoute(
         settings: settings,
         builder: (_) => RssArticleDetailPage(args: args),
+      );
+    }
+    if (settings.name == sourceLogin) {
+      final args = settings.arguments as SourceLoginPageArgs;
+      return MaterialPageRoute(
+        settings: settings,
+        builder: (_) => SourceLoginPage(args: args),
+      );
+    }
+    if (settings.name == sourceWebLogin) {
+      final args = settings.arguments as WebViewLoginPageArgs;
+      return MaterialPageRoute(
+        settings: settings,
+        builder: (_) => WebViewLoginPage(args: args),
+      );
+    }
+    if (settings.name == sourceDebug) {
+      final args = settings.arguments as Map<String, String>;
+      return MaterialPageRoute(
+        settings: settings,
+        builder: (_) => BookSourceDebugPage(args: args),
+      );
+    }
+    if (settings.name == rssSourceDebug) {
+      final args = settings.arguments as Map<String, String>;
+      return MaterialPageRoute(
+        settings: settings,
+        builder: (_) => RssSourceDebugPage(args: args),
       );
     }
     return null;

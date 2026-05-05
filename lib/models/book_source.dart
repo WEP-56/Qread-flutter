@@ -74,6 +74,12 @@ class BookSource {
   @JsonKey(name: 'loginCheckJs')
   String? loginCheckJs;
 
+  @JsonKey(name: 'variableComment')
+  String? variableComment;
+
+  @JsonKey(name: 'checkKeyWord')
+  String? checkKeyWord;
+
   BookSource({
     this.bookSourceUrl,
     this.bookSourceName,
@@ -98,6 +104,8 @@ class BookSource {
     this.loginUrl,
     this.loginUi,
     this.loginCheckJs,
+    this.variableComment,
+    this.checkKeyWord,
   });
 
   factory BookSource.fromJson(Map<String, dynamic> json) => BookSource(
@@ -124,6 +132,8 @@ class BookSource {
         loginUrl: toStringVal(json['loginUrl']),
         loginUi: toStringVal(json['loginUi']),
         loginCheckJs: toStringVal(json['loginCheckJs']),
+        variableComment: toStringVal(json['variableComment']),
+        checkKeyWord: toStringVal(json['checkKeyWord']),
       );
 
   Map<String, dynamic> toJson() => _$BookSourceToJson(this);

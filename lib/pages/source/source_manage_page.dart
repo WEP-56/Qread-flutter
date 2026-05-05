@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +6,8 @@ import '../../config/routes.dart';
 import '../../models/book_source.dart';
 import '../../providers/source_manage_provider.dart';
 import '../../providers/user_provider.dart';
+import '../login/source_login_page.dart';
+import '../login/webview_login_page.dart';
 import 'book_source_editor_page.dart';
 
 class SourceManagePage extends StatefulWidget {
@@ -287,6 +290,8 @@ class _SourceManagePageState extends State<SourceManagePage> {
             onTop: (s) => provider.topSourceItem(_token(), s.bookSourceUrl ?? ''),
             onBottom: (s) => provider.bottomSourceItem(_token(), s.bookSourceUrl ?? ''),
             onEdit: (s) => _showEditDialog(s),
+            onLogin: (s) => _showSourceLogin(s),
+            onDebug: (s) => _showSourceDebug(s),
             isSelected: (id) => provider.selectedIds.contains(id),
             onToggleSelect: (id) => provider.toggleSelection(id),
             selectMode: provider.selectMode,
@@ -490,6 +495,62 @@ class _SourceManagePageState extends State<SourceManagePage> {
     }
   }
 
+  void _showSourceLogin(BookSource source) {
+    final hasLoginUi =
+        (source.loginUi ?? '').isNotEmpty;
+    if (hasLoginUi) {
+      Navigator.pushNamed(
+        context,
+        AppRoutes.sourceLogin,
+        arguments: SourceLoginPageArgs(
+          sourceUrl: source.bookSourceUrl ?? '',
+          sourceName: source.bookSourceName ?? '书源',
+          type: 'bookSource',
+          loginUi: source.loginUi,
+          loginUrl: source.loginUrl,
+          variableComment: source.variableComment,
+          header: source.header,
+        ),
+      );
+    } else if ((source.loginUrl ?? '').isNotEmpty) {
+      Navigator.pushNamed(
+        context,
+        AppRoutes.sourceWebLogin,
+        arguments: WebViewLoginPageArgs(
+          sourceUrl: source.bookSourceUrl ?? '',
+          sourceName: source.bookSourceName ?? '书源',
+          type: 'bookSource',
+          loginUrl: source.loginUrl!,
+          headers: _parseHeaderJson(source.header),
+        ),
+      );
+    }
+  }
+
+  Map<String, String> _parseHeaderJson(String? raw) {
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final map = jsonDecode(raw);
+      if (map is Map) {
+        return map.map((k, v) => MapEntry(k.toString(), v.toString()));
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  void _showSourceDebug(BookSource source) {
+    Navigator.pushNamed(
+      context,
+      AppRoutes.sourceDebug,
+      arguments: {
+        'sourceUrl': source.bookSourceUrl ?? '',
+        'sourceName': source.bookSourceName ?? '书源',
+        'checkKeyWord': source.checkKeyWord ?? '系统',
+        'exploreUrl': source.exploreUrl ?? '',
+      },
+    );
+  }
+
   void _showBatchGroupDialog() {
     final groupController = TextEditingController();
     String st = '0'; // 0=添加分组, 1=移除分组
@@ -646,6 +707,8 @@ class _SourceGroupSection extends StatelessWidget {
   final void Function(BookSource) onTop;
   final void Function(BookSource) onBottom;
   final void Function(BookSource) onEdit;
+  final void Function(BookSource) onLogin;
+  final void Function(BookSource) onDebug;
   final bool Function(String) isSelected;
   final void Function(String) onToggleSelect;
   final bool selectMode;
@@ -661,6 +724,8 @@ class _SourceGroupSection extends StatelessWidget {
     required this.onTop,
     required this.onBottom,
     required this.onEdit,
+    required this.onLogin,
+    required this.onDebug,
     required this.isSelected,
     required this.onToggleSelect,
     required this.selectMode,
@@ -686,6 +751,8 @@ class _SourceGroupSection extends StatelessWidget {
                   onTop: () => onTop(source),
                   onBottom: () => onBottom(source),
                   onEdit: () => onEdit(source),
+                  onLogin: () => onLogin(source),
+                  onDebug: () => onDebug(source),
                   selected: isSelected(source.bookSourceUrl ?? ''),
                   onToggleSelect: () => onToggleSelect(source.bookSourceUrl ?? ''),
                   selectMode: selectMode,
@@ -706,6 +773,8 @@ class _SourceTile extends StatelessWidget {
   final VoidCallback onTop;
   final VoidCallback onBottom;
   final VoidCallback onEdit;
+  final VoidCallback onLogin;
+  final VoidCallback onDebug;
   final bool selected;
   final VoidCallback onToggleSelect;
   final bool selectMode;
@@ -719,6 +788,8 @@ class _SourceTile extends StatelessWidget {
     required this.onTop,
     required this.onBottom,
     required this.onEdit,
+    required this.onLogin,
+    required this.onDebug,
     required this.selected,
     required this.onToggleSelect,
     required this.selectMode,
@@ -776,6 +847,12 @@ class _SourceTile extends StatelessWidget {
                           case 'toggleExplore':
                             onToggleExplore();
                             break;
+                          case 'login':
+                            onLogin();
+                            break;
+                          case 'debug':
+                            onDebug();
+                            break;
                           case 'edit':
                             onEdit();
                             break;
@@ -799,6 +876,10 @@ class _SourceTile extends StatelessWidget {
                           value: 'toggleExplore',
                           child: Text(source.enabledExplore == true ? '关闭发现' : '开启发现'),
                         ),
+                        if ((source.loginUrl ?? '').isNotEmpty ||
+                            (source.loginUi ?? '').isNotEmpty)
+                          const PopupMenuItem(value: 'login', child: Text('登录')),
+                        const PopupMenuItem(value: 'debug', child: Text('调试')),
                         const PopupMenuItem(value: 'edit', child: Text('编辑')),
                         const PopupMenuItem(value: 'top', child: Text('置顶')),
                         const PopupMenuItem(value: 'bottom', child: Text('置底')),

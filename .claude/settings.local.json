@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(flutter analyze *)"
+      "Bash(flutter analyze *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(flutter pub *)"
     ]
   }
 }

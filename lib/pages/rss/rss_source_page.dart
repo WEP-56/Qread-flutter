@@ -6,6 +6,8 @@ import '../../config/routes.dart';
 import '../../models/rss_source.dart';
 import '../../providers/rss_manage_provider.dart';
 import '../../providers/user_provider.dart';
+import '../login/source_login_page.dart';
+import '../login/webview_login_page.dart';
 import 'rss_source_editor_page.dart';
 
 class RssSourcePage extends StatefulWidget {
@@ -254,6 +256,8 @@ class _RssSourcePageState extends State<RssSourcePage> {
                         onBottom: () => provider.bottomSource(_token(), source.sourceUrl ?? ''),
                         onEdit: () => _showEditDialog(provider, source),
                         onExport: () => _exportOne(provider, source),
+                        onLogin: () => _showRssSourceLogin(source),
+                        onDebug: () => _showRssSourceDebug(source),
                       )),
                 ],
               ),
@@ -359,6 +363,59 @@ class _RssSourcePageState extends State<RssSourcePage> {
     );
   }
 
+  void _showRssSourceLogin(RssSource source) {
+    final hasLoginUi = (source.loginUi ?? '').isNotEmpty;
+    if (hasLoginUi) {
+      Navigator.pushNamed(
+        context,
+        AppRoutes.sourceLogin,
+        arguments: SourceLoginPageArgs(
+          sourceUrl: source.sourceUrl ?? '',
+          sourceName: source.sourceName ?? '订阅源',
+          type: 'rssSource',
+          loginUi: source.loginUi,
+          loginUrl: source.loginUrl,
+          variableComment: source.variableComment,
+          header: source.header,
+        ),
+      );
+    } else if ((source.loginUrl ?? '').isNotEmpty) {
+      Navigator.pushNamed(
+        context,
+        AppRoutes.sourceWebLogin,
+        arguments: WebViewLoginPageArgs(
+          sourceUrl: source.sourceUrl ?? '',
+          sourceName: source.sourceName ?? '订阅源',
+          type: 'rssSource',
+          loginUrl: source.loginUrl!,
+          headers: _parseHeaderJson(source.header),
+        ),
+      );
+    }
+  }
+
+  Map<String, String> _parseHeaderJson(String? raw) {
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final map = jsonDecode(raw);
+      if (map is Map) {
+        return map.map((k, v) => MapEntry(k.toString(), v.toString()));
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  void _showRssSourceDebug(RssSource source) {
+    Navigator.pushNamed(
+      context,
+      AppRoutes.rssSourceDebug,
+      arguments: {
+        'sourceUrl': source.sourceUrl ?? '',
+        'sourceName': source.sourceName ?? '订阅源',
+      },
+    );
+  }
+
   String _extractSingleSourceJson(String raw) {
     try {
       final decoded = jsonDecode(raw);
@@ -412,6 +469,8 @@ class _RssSourceTile extends StatelessWidget {
   final VoidCallback onBottom;
   final VoidCallback onEdit;
   final VoidCallback onExport;
+  final VoidCallback onLogin;
+  final VoidCallback onDebug;
 
   const _RssSourceTile({
     required this.source,
@@ -422,6 +481,8 @@ class _RssSourceTile extends StatelessWidget {
     required this.onBottom,
     required this.onEdit,
     required this.onExport,
+    required this.onLogin,
+    required this.onDebug,
   });
 
   @override
@@ -453,6 +514,12 @@ class _RssSourceTile extends StatelessWidget {
                       case 'toggle':
                         onToggle();
                         break;
+                      case 'login':
+                        onLogin();
+                        break;
+                      case 'debug':
+                        onDebug();
+                        break;
                       case 'top':
                         onTop();
                         break;
@@ -476,6 +543,10 @@ class _RssSourceTile extends StatelessWidget {
                         value: 'toggle',
                         child: Text(source.enabled == true ? '禁用' : '启用'),
                       ),
+                    if ((source.loginUrl ?? '').isNotEmpty ||
+                        (source.loginUi ?? '').isNotEmpty)
+                      const PopupMenuItem(value: 'login', child: Text('登录')),
+                    const PopupMenuItem(value: 'debug', child: Text('调试')),
                     if (canEdit) const PopupMenuItem(value: 'top', child: Text('置顶')),
                     if (canEdit) const PopupMenuItem(value: 'bottom', child: Text('置底')),
                     if (canEdit) const PopupMenuItem(value: 'edit', child: Text('编辑')),

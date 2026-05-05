@@ -1,148 +1,364 @@
 # Qread 项目接手文档
 
-> 供新会话 AI 快速理解项目状态和开发上下文
+> 供新会话 AI 快速接手当前 Flutter 端状态与下一步开发重点
 
 ## 项目目标
 
-基于后端项目 `/workspace/read`（Kotlin/Solon），开发 **Flutter 客户端**（仅 Windows + Android），复刻其 Web 端阅读器的全部功能。**不修改后端**，仅做前端客户端。
+基于后端项目 `Qread-source`（Kotlin/Solon）与开源 Web 客户端，开发 **Flutter 客户端**（Windows + Android），尽可能复刻 Legado/Qread 的实际行为。
 
-## 仓库
+当前主目标已经从“跑通基本链路”切换为：
 
-- GitHub: https://github.com/WEP-56/Qread-flutter
-- 本地路径: `/workspace/Qread`
-- 后端源码: `/workspace/read`
+1. **书源全量适配**
+2. **订阅源全量适配**
+3. **阅读器使用打磨**
 
-## 当前进度
+这里的“全量适配”重点不是静态页面，而是：
 
-### 已完成
+- `loginUi`
+- `loginUrl`
+- 源变量
+- 源动作
+- 调试页
+- WebView 行为
+- 一键导入
+- 表单式源编辑器
 
-1. **项目初始化** — Flutter 项目已创建，已 push 到 GitHub main 分支
-2. **目录结构搭建** — config/models/services/providers/pages/widgets
-3. **数据模型** — Book/BookSource/RssSource/RssArticle/BookGroup/ReplaceRule/SearchResult/Chapter（含 .g.dart，已提交到 Git）
-4. **API 服务层** — `lib/services/api_service.dart`，Dio 单例，完整覆盖后端所有 API
-5. **本地存储** — `lib/services/storage_service.dart`，SharedPreferences 存储 token/baseUrl/themeMode
-6. **状态管理** — Provider: UserProvider/BookshelfProvider/DiscoverProvider/RssProvider/ReaderProvider
-7. **页面实现**:
-   - ✅ 书架页（GridView 3列 + 下拉刷新 + 分组筛选 + 分组 CRUD）
-   - ✅ 发现页（ExpansionTile 按分组展示书源 + 分类底部弹窗 + getBookSourcesExploreUrl API）
-   - ✅ RSS订阅页（分组网格展示 + 源卡片）
-   - ✅ 我的页（用户信息/设置入口/服务器地址配置/关于）
-   - ✅ 登录/注册页（切换模式 + 密码可见性）
-   - ✅ 搜索页（多书源并行搜索 + 去重 + 加入书架）
-   - ✅ 阅读器页（章节列表 + 内容展示 + 进度保存 + 翻页 + 字号/行距调节 + 目录弹窗）
-   - ⬜ 书源管理页（占位，开发中）
-   - ⬜ RSS源管理页（占位，开发中）
-8. **组件** — BookCard/RssSourceCard/LoadingWidget
-9. **主题** — 明暗模式切换（teal 主色 #009688），CardThemeData（非 CardTheme）
-10. **API 文档** — `doc/API.md`，157 个端点完整记录
-11. **功能清单** — `doc/FEATURE_TODO.md`，按 5 大页面详细列出功能+API+样式参考
-12. **登录→数据加载完整链路** — 已验证可跑通
+## 当前仓库与参考代码
 
-### 本会话修复的关键问题
+- Flutter 仓库根目录：`D:\Qread`
+- 后端 / Web 参考仓库：`D:\Qread\Qread-source`
+- 本地克隆的 Legado 参考源码：`D:\Qread\_refs\legado`
 
-1. **`.g.dart` 未提交** — `.gitignore` 排除了 `*.g.dart`，克隆后缺失 → 已移除排除，8个 `.g.dart` 已提交
-2. **`CardTheme` → `CardThemeData`** — 新版 Flutter 重命名 → 已修复
-3. **API 版本号** — `apiVersion = 1` → `5`（后端 `apiversion = 5`，版本校验 `v < apiversion` 会拒绝）
-4. **登录 token 字段** — 后端返回 `data.accessToken`，代码写的是 `data.token` → 已修复
-5. **getUserInfo 路径** — `/getuserinfo` → `/getUserInfo`（大小写敏感）
-6. **getUserInfo 用户名路径** — `data.name` → `data.userInfo.username`
-7. **多个 API 路径大小写** — `/getBookInfo`→`/getBookinfo`、`/deleteReplaceRule`→`/delReplaceRule`、`/deleteBookSources`→`/delbookSources`、`/getRssArticles`→`/getArticles`
-8. **注册接口不存在** — `/register` 不存在，注册也走 `/login`
-9. **Bearer header 无用** — 后端通过 `accessToken` 查询参数认证，不需要 Authorization header → 已移除
-10. **getBookshelfPage 响应解析** — 直接取 `['md5']` → 取 `['data']['md5']`
-11. **setState during build** — `didChangeDependencies` 中直接触发异步操作 → 改用 `addPostFrameCallback` 延迟加载
-12. **登录后数据不刷新** — 各页面监听 `UserProvider.isLoggedIn` 变化自动加载数据
-13. **New 接口缓存机制** — `getBookSourcesNew`/`getRssSourcessNew` 必须先调 `Page` 接口写入缓存再读取，且缓存60秒TTL过期后返回 false → 添加 `getBookSources`/`getRssSources` fallback
-14. **残留代码片段** — `api_service.dart` 第333-343行重复代码 → 已删除
+> 后续涉及书源/订阅源编辑、登录、变量、动作、调试时，**优先直接参考 `_refs/legado`**，不要只靠记忆或搜索网页资料。
 
-### 待开发（按优先级）
+## 当前状态概览
 
-**P1 — 核心功能**:
-- 发现页书籍列表展示（点击分类后展示 exploreBook 结果）
-- 书源管理完整页面（导入/编辑/启用禁用/分组/排序/导出）
-- 阅读器设置（字体/背景/翻页模式/替换规则）
-- 书签功能（addbookmark/getbookmark/delbookmark）
+### 基础链路
 
-**P2 — 进阶功能**:
-- RSS 文章列表页 + 文章详情页（WebView 渲染）
-- 替换规则管理页
-- TTS 语音朗读
-- 缓存/离线功能
-- 本地书籍导入（TXT/EPUB）
-- KV 配置同步（getitem/setitem）
+以下链路已经基本可用：
 
-**P3 — 体验优化**:
-- 阅读背景自定义
-- WebView 漫画/有声书支持
-- 付费章节
-- 图片解密代理
-- Cookie 管理
-- 多设备管理
+- 登录
+- 发现
+- 搜索
+- 加入书架
+- 阅读
+- 书源管理基本修改
 
-## 关键技术信息
+### 已经做完或基本可用的模块
 
-### API 要点
-- 基础路径: `/api/{v}`，**v=5**，所有接口直接挂在此路径下，无子路径分组
-- 认证: `accessToken` **查询参数**（非 Header，不需要 Bearer token）
-- **版本校验**: login 的 `v` 是路径参数 `@Path v:Int`，`v < 5` 会返回"版本不支持"，`v > 5` 返回"后端不支持"
-- `appversion` 返回纯字符串（当前 `"3.1.0"`），非 JsonResponse
-- `deleteBooks` 的 ids 是书籍 URL 列表（@Body JSON数组）
-- `saveBookProgress` 的 pos 是 Double? 可空，默认 0.0
-- **缓存机制**: `getXxxPage` 接口写入缓存并返回 md5+page，`getXxxNew` 接口从缓存读取。New 接口缓存60秒TTL，过期返回 `isSuccess: false`
-- md5 格式: 书架=`user.bookmd5`，书源=`user.sourcemd5+user.source`，RSS=`user.rssmd5+user.source`
-- `getBookSources` fallback: errorMsg "ok"=有权限, "no"=无权限；返回 data 直接是数组
-- `getRssSourcess` fallback: 返回 `{sources: [...], can: true/false}`
-- `proxypng` 无需 accessToken
-- `getChapterListNew` 参数: bookSourceUrl(非source)/bookname/useReplaceRule/needRefresh
-- `getBookContentNew` 返回 {text: 正文内容, rules: 替换规则列表}
-- `addreadchapter` 的 readchapter 为章节索引字符串
-- `saveRssSources` 的 source/urls 是普通参数，非 @Body
-- `uploadimage` 返回 `http//assets/images/{md5}.png`（缺少冒号，是后端 bug）
+- 书架页
+- 发现页
+- 搜索页
+- 登录 / 注册页
+- 我的页
+- 阅读器基础页
+- 书源管理页（已不再是占位）
+- RSS 订阅页
+- RSS 管理页（基础版）
+- RSS 文章列表 / 详情页（基础版）
 
-### 后端额外发现
-- `BookMarkController`（3个）: addbookmark/getbookmark/delbookmark
-- `ItemController`（2个）: getitem/setitem — 前端 KV 配置同步用
-- 后端没有独立的注册接口，注册也走 `/login`
-- 后端**没有** `/register` 端点
+### 已完成的重要结构升级
 
-### 用户权限（user.source）
-- `0`: 只读模式，能获取书/RSS源列表和阅读，不能修改书源/RSS源
-- `1`: 可获取所有源（含禁用的），可修改
-- `2`: 独立书源空间
+1. **Windows WebView 已补齐**
+   - 之前 Windows 没有默认 WebView 实现，`type=1` 订阅源会直接报错。
+   - 现在新增了 `webview_windows`，并封装了统一组件：
+     - `lib/widgets/adaptive_webview.dart`
+   - Windows 用 `webview_windows`
+   - 其它平台暂时仍走 `webview_flutter`
 
-### Flutter 版本
-- 用户本机 Flutter 版本较新（支持 CardThemeData）
-- 项目 SDK 约束: `>=2.17.0 <3.0.0`
-- 注意：不可使用 `context.mounted`（3.7+）、`firstOrNull`（Dart 2.18+）、`TabAlignment`（3.13+）
+2. **书源 / 订阅源结构化编辑器已建立**
+   - 不再只依赖 JSON 文本框
+   - 已按 Legado 的 tab 结构拆成 Flutter 页
+   - 书源编辑：
+     - `lib/pages/source/book_source_editor_page.dart`
+   - 订阅源编辑：
+     - `lib/pages/rss/rss_source_editor_page.dart`
+   - 通用 JSON path 读写：
+     - `lib/pages/source/source_editor_support.dart`
 
-### 当前依赖
+3. **一键导入链路已接入**
+   - 支持拦截：
+     - `yuedu://booksource/importonline?src=...`
+     - `legado://import/{path}?src=...`
+   - 导入逻辑在：
+     - `lib/pages/rss/rss_web_page.dart`
+     - `lib/widgets/adaptive_webview.dart`
+
+4. **API body 编码问题已修正**
+   - 之前很多 `@Body List<String>` / `@Body Object` 接口被错误按表单方式发出
+   - 现已统一补 `application/json`
+   - 影响范围：
+     - 批量书源接口
+     - 批量 RSS 接口
+     - `getRssSourcejson`
+     - `getbookSourcejson`
+     - `editRssSources`
+
+## 当前仍未完成的核心问题
+
+### 1. 登录 UI / 登录动作还没真正适配
+
+这是当前最关键的缺口。
+
+很多源的能力不在普通网页 HTML，而在源 JSON 内部定义：
+
+- `loginUi`
+- `loginUrl`
+- `loginCheckJs`
+- `variableComment`
+- `shouldOverrideUrlLoading`
+
+目前状态：
+
+- 可以打开网页
+- 可以拦截部分一键导入协议
+- **不能完整渲染 Legado 风格的 `loginUi` 按钮 / 输入表单 / 动作执行**
+
+例如：
+
+- 切换起始页
+- 登录
+- 清理 cookie
+- 源变量编辑
+- 源动作执行
+
+这些都还是待做。
+
+### 2. 调试页还没做
+
+Legado 原版有非常重要的调试页：
+
+- 调试搜索
+- 调试发现
+- 调试详情
+- 调试目录
+- 调试正文
+
+这对书源适配是核心工具，Flutter 端目前还没有。
+
+### 3. 结构化编辑器还是第一版
+
+目前编辑器已经有 tab + 表单，但还是“基础字段表单化”，还没到 Legado 原版成熟度。
+
+目前缺：
+
+- 更多 checkbox / dropdown / 特殊控件
+- 字段级帮助
+- 登录入口
+- 变量入口
+- 调试入口
+- 粘贴 / QR / 分享 / 导入辅助
+- URL 选项插入器
+
+### 4. 阅读器仍需继续打磨
+
+已修复一个明显错误：
+
+- 漫画类型应是 `type == 2`
+
+但仍缺：
+
+- 书签
+- 阅读设置完整化
+- HTML / 漫画 / 有声的进一步细分
+- 源变量 / WebView 内容对阅读器的联动
+
+## 本会话新增 / 修改的重点文件
+
+### 新增
+
+- `lib/widgets/adaptive_webview.dart`
+- `lib/pages/source/source_editor_support.dart`
+- `lib/pages/source/book_source_editor_page.dart`
+- `lib/pages/rss/rss_source_editor_page.dart`
+- `lib/pages/rss/rss_web_page.dart`
+- `lib/pages/rss/rss_article_list_page.dart`
+- `lib/pages/rss/rss_article_detail_page.dart`
+- `lib/providers/rss_manage_provider.dart`
+- `D:\Qread\_refs\legado`（本地参考仓库）
+
+### 关键修改
+
+- `lib/services/api_service.dart`
+- `lib/pages/source/source_manage_page.dart`
+- `lib/pages/rss/rss_source_page.dart`
+- `lib/config/routes.dart`
+- `lib/main.dart`
+- `lib/pages/reader/reader_page.dart`
+- `lib/widgets/rss_source_card.dart`
+- `lib/providers/source_manage_provider.dart`
+
+## 当前 Provider / 页面状态
+
+### Provider
+
+- `UserProvider`
+- `BookshelfProvider`
+- `DiscoverProvider`
+- `ReaderProvider`
+- `RssProvider`
+- `SourceManageProvider`
+- `RssManageProvider`
+
+### 页面
+
+- `BookshelfPage`
+- `DiscoverPage`
+- `ExploreBooksPage`
+- `SearchPage`
+- `ReaderPage`
+- `ProfilePage`
+- `RssPage`
+- `RssArticleListPage`
+- `RssArticleDetailPage`
+- `RssSourcePage`
+- `SourceManagePage`
+- `BookSourceEditorPage`
+- `RssSourceEditorPage`
+
+## 与 Legado 对照时的关键入口
+
+### 登录 UI
+
+- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\login\SourceLoginActivity.kt`
+- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\login\SourceLoginViewModel.kt`
+
+### 书源编辑
+
+- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\book\source\edit\BookSourceEditActivity.kt`
+
+### 订阅源编辑
+
+- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\rss\source\edit\RssSourceEditActivity.kt`
+
+### 书源管理
+
+- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\book\source\manage`
+
+### RSS 管理
+
+- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\rss\source\manage`
+
+## API 关键注意点
+
+### 通用
+
+- API 基础路径：`/api/{v}`，当前 `v=5`
+- 认证方式：`accessToken` **查询参数**
+- 不是 Bearer token
+
+### 分页缓存接口
+
+- `getXxxPage` 先写缓存并返回 `md5 + page`
+- `getXxxNew` 再读缓存
+- 缓存 TTL 约 60 秒
+- 过期时 `New` 接口可能返回空 / false，需要 fallback
+
+### 书源 / RSS 旧接口 fallback
+
+- `getBookSources` 返回 `errorMsg` 带权限语义：
+  - `"ok"` = 可编辑
+  - `"no"` = 只读
+- `getRssSourcess` 返回：
+  - `data.sources`
+  - `data.can`
+
+### Body 编码
+
+这类接口必须特别注意：
+
+- `saveBookSources`：body 是 **纯文本 JSON**
+- `saveBookSource`：body 是 **纯文本 JSON**
+- `saveRssSources`：`source` / `urls` 是 query/form 参数
+- 很多批量接口：body 是 **JSON 数组**
+
+如果又看到：
+
+- 后端返回空数组
+- 后端 `400`
+- 明明接口通了但数据为空
+
+优先检查 `content-type` 和 body 序列化方式。
+
+## 当前依赖
+
 ```yaml
-provider: ^6.0.3 | dio: ^4.0.6 | shared_preferences: ^2.0.15
-cached_network_image: ^3.2.1 | flutter_html: ^3.0.0-alpha.3
-webview_flutter: ^3.0.4 | url_launcher: ^6.1.3
-path_provider: ^2.0.11 | json_annotation: ^4.5.0
+provider: ^6.0.3
+dio: ^4.0.6
+shared_preferences: ^2.0.15
+cached_network_image: ^3.2.1
+pull_to_refresh: ^2.0.0
+flutter_html: ^3.0.0-alpha.3
+webview_flutter: ^3.0.4
+webview_windows: ^0.4.0
+url_launcher: ^6.1.3
+path_provider: ^2.0.11
+sqflite: ^2.0.2+1
+json_annotation: ^4.5.0
 ```
 
-## 文件导航
+## 当前已知问题 / 风险
 
-| 用途 | 路径 |
-|------|------|
-| 入口 | `lib/main.dart` |
-| App 配置 | `lib/app.dart` |
-| 路由 | `lib/config/routes.dart` |
-| 常量 | `lib/config/constants.dart` |
-| 主题 | `lib/config/theme.dart` |
-| API 服务 | `lib/services/api_service.dart` |
-| 本地存储 | `lib/services/storage_service.dart` |
-| 用户状态 | `lib/providers/user_provider.dart` |
-| 书架状态 | `lib/providers/bookshelf_provider.dart` |
-| 阅读器状态 | `lib/providers/reader_provider.dart` |
-| 发现状态 | `lib/providers/discover_provider.dart` |
-| RSS状态 | `lib/providers/rss_provider.dart` |
-| 阅读器页 | `lib/pages/reader/reader_page.dart` |
-| 书架页 | `lib/pages/bookshelf/bookshelf_page.dart` |
-| 搜索页 | `lib/pages/search/search_page.dart` |
-| API 文档 | `doc/API.md` |
-| 功能清单 | `doc/FEATURE_TODO.md` |
-| 后端控制器 | `/workspace/read/src/main/kotlin/web/controller/api/` |
-| 后端基础路径 | `/workspace/read/src/main/kotlin/web/controller/api/BaseController.kt` → `routepath="/api/{v}"` |
+1. **源码中文文案仍有部分历史乱码**
+   - 不是终端显示问题，而是部分源码字符串本身已经坏了
+   - 新增页面尽量保持正常中文，旧页面后续逐步清理
+
+2. **Windows WebView 切换行为仍需继续测试**
+   - 当前已把 popup policy 改成 `sameWindow`
+   - 能解决一部分“点击二级页没反应”
+   - 但更复杂的站点跳转仍需继续观察
+
+3. **结构化编辑页还只是第一版**
+   - 已可编辑主要字段
+   - 但距离 Legado 原版还差很多增强行为
+
+4. **`loginUi` / `loginUrl` 才是全量适配主战场**
+   - 这部分还没真正开工完成
+
+## 下个会话建议顺序
+
+### 第一优先级
+
+1. **适配 `loginUi`**
+   - 按 Legado 的 RowUi 结构渲染按钮 / 输入项
+   - 支持点击动作
+   - 支持保存登录信息
+
+2. **适配 `loginUrl` / 动作执行**
+   - 书源
+   - 订阅源
+   - 源变量
+   - 清理 cookie / cache
+
+3. **做调试页**
+   - 调试搜索
+   - 调试发现
+   - 调试详情
+   - 调试目录
+   - 调试正文
+
+### 第二优先级
+
+4. **继续增强结构化编辑器**
+   - menu
+   - 登录入口
+   - 变量入口
+   - 调试入口
+   - 导入 / 导出 / 粘贴辅助
+
+5. **阅读器继续打磨**
+   - 书签
+   - 设置
+   - 内容模式细化
+
+## 验证基线
+
+截至本次交接：
+
+- `flutter analyze` 无新增 error（仍有一些历史 warning/info）
+- `flutter test` 通过
+
+如果下个会话引入了新的 Windows 插件或 WebView 行为，记得：
+
+- 不要只靠热重载验证
+- 需要完整重启 Windows 端应用

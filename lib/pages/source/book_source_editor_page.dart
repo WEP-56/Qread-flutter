@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../config/routes.dart';
 import '../../providers/source_manage_provider.dart';
 import '../../providers/user_provider.dart';
+import '../../services/api_service.dart';
+import '../login/source_login_page.dart';
 import 'source_editor_support.dart';
 
 class BookSourceEditorPageArgs {
@@ -29,10 +32,6 @@ class _BookSourceEditorPageState extends State<BookSourceEditorPage> with Single
   late final TabController _tabController;
   final Map<String, dynamic> _data = {};
   final Map<String, TextEditingController> _controllers = {};
-  bool _enabled = true;
-  bool _enabledExplore = true;
-  bool _enabledCookieJar = false;
-  int _bookSourceType = 0;
   bool _saving = false;
 
   static const _tabs = ['基本', '搜索', '发现', '详情', '目录', '正文'];
@@ -42,6 +41,11 @@ class _BookSourceEditorPageState extends State<BookSourceEditorPage> with Single
     SourceEditorField(path: 'bookSourceName', label: '源名称 (sourceName)'),
     SourceEditorField(path: 'bookSourceGroup', label: '源分组 (sourceGroup)'),
     SourceEditorField(path: 'bookSourceComment', label: '源注释 (sourceComment)', maxLines: 5),
+    SourceEditorField(path: 'bookSourceType', label: '书籍类型', type: SourceFieldType.dropdown,
+        options: ['小说', '听书', '漫画', '文件']),
+    SourceEditorField(path: 'enabled', label: '启用', type: SourceFieldType.checkbox),
+    SourceEditorField(path: 'enabledExplore', label: '启用发现', type: SourceFieldType.checkbox),
+    SourceEditorField(path: 'enabledCookieJar', label: 'CookieJar', type: SourceFieldType.checkbox),
     SourceEditorField(path: 'loginUrl', label: '登录 URL (loginUrl)', maxLines: 5),
     SourceEditorField(path: 'loginUi', label: '登录 UI (loginUi)', maxLines: 6),
     SourceEditorField(path: 'loginCheckJs', label: '登录校验 JS (loginCheckJs)', maxLines: 5),
@@ -140,10 +144,6 @@ class _BookSourceEditorPageState extends State<BookSourceEditorPage> with Single
     if (raw != null && raw.isNotEmpty && raw != '{}') {
       _data.addAll(decodeSourceJson(raw));
     }
-    _enabled = _data['enabled'] != false;
-    _enabledExplore = _data['enabledExplore'] != false;
-    _enabledCookieJar = _data['enabledCookieJar'] == true;
-    _bookSourceType = _data['bookSourceType'] is int ? _data['bookSourceType'] as int : 0;
     final allFields = [
       ..._basicFields,
       ..._searchFields,
@@ -153,9 +153,16 @@ class _BookSourceEditorPageState extends State<BookSourceEditorPage> with Single
       ..._contentFields,
     ];
     for (final field in allFields) {
-      _controllers[field.path] = TextEditingController(
-        text: readPath(_data, field.path)?.toString() ?? '',
-      );
+      final rawValue = readPath(_data, field.path);
+      String text;
+      if (field.type == SourceFieldType.checkbox) {
+        text = (rawValue == true).toString();
+      } else if (field.type == SourceFieldType.dropdown) {
+        text = (rawValue is int ? rawValue : 0).toString();
+      } else {
+        text = rawValue?.toString() ?? '';
+      }
+      _controllers[field.path] = TextEditingController(text: text);
     }
   }
 
@@ -164,13 +171,21 @@ class _BookSourceEditorPageState extends State<BookSourceEditorPage> with Single
     if (token == null) return;
     setState(() => _saving = true);
     try {
-      _data['enabled'] = _enabled;
-      _data['enabledExplore'] = _enabledExplore;
-      _data['enabledCookieJar'] = _enabledCookieJar;
-      _data['bookSourceType'] = _bookSourceType;
       for (final entry in _controllers.entries) {
         final value = entry.value.text.trim();
-        writePath(_data, entry.key, value.isEmpty ? null : value);
+        if (value.isEmpty) {
+          writePath(_data, entry.key, null);
+          continue;
+        }
+        // Determine the field type to convert values correctly
+        final field = _findField(entry.key);
+        if (field?.type == SourceFieldType.checkbox) {
+          writePath(_data, entry.key, value == 'true');
+        } else if (field?.type == SourceFieldType.dropdown) {
+          writePath(_data, entry.key, int.tryParse(value) ?? 0);
+        } else {
+          writePath(_data, entry.key, value);
+        }
       }
       final success = await context.read<SourceManageProvider>().editSource(
             token,
@@ -187,6 +202,15 @@ class _BookSourceEditorPageState extends State<BookSourceEditorPage> with Single
     }
   }
 
+  SourceEditorField? _findField(String path) {
+    for (final list in [_basicFields, _searchFields, _exploreFields, _infoFields, _tocFields, _contentFields]) {
+      for (final f in list) {
+        if (f.path == path) return f;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -199,94 +223,277 @@ class _BookSourceEditorPageState extends State<BookSourceEditorPage> with Single
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.bug_report),
+            tooltip: '调试',
+            onPressed: () {
+              _saveCurrentToData();
+              Navigator.pushNamed(
+                context,
+                AppRoutes.sourceDebug,
+                arguments: {
+                  'sourceUrl': (_data['bookSourceUrl'] ?? '').toString(),
+                  'sourceName': (_data['bookSourceName'] ?? '书源').toString(),
+                  'checkKeyWord': _getCheckKeyWord(),
+                  'exploreUrl': (_data['exploreUrl'] ?? '').toString(),
+                },
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.login),
+            tooltip: '登录',
+            onPressed: () {
+              _saveCurrentToData();
+              Navigator.pushNamed(
+                context,
+                AppRoutes.sourceLogin,
+                arguments: SourceLoginPageArgs(
+                  sourceUrl: (_data['bookSourceUrl'] ?? '').toString(),
+                  sourceName: (_data['bookSourceName'] ?? '书源').toString(),
+                  type: 'bookSource',
+                  loginUi: (_data['loginUi'] ?? '').toString(),
+                  loginUrl: (_data['loginUrl'] ?? '').toString(),
+                  variableComment: (_data['variableComment'] ?? '').toString(),
+                  header: (_data['header'] ?? '').toString(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.save),
             onPressed: _saving ? null : _save,
           ),
         ],
       ),
-      body: Column(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          Material(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-              child: Wrap(
-                spacing: 16,
-                runSpacing: 8,
-                children: [
-                  DropdownButton<int>(
-                    value: _bookSourceType,
-                    items: const [
-                      DropdownMenuItem(value: 0, child: Text('小说')),
-                      DropdownMenuItem(value: 1, child: Text('听书')),
-                      DropdownMenuItem(value: 2, child: Text('漫画')),
-                      DropdownMenuItem(value: 3, child: Text('文件')),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() => _bookSourceType = value);
-                    },
-                  ),
-                  _check('启用', _enabled, (v) => setState(() => _enabled = v)),
-                  _check('发现', _enabledExplore, (v) => setState(() => _enabledExplore = v)),
-                  _check('CookieJar', _enabledCookieJar, (v) => setState(() => _enabledCookieJar = v)),
-                ],
-              ),
-            ),
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _fields(_basicFields),
-                _fields(_searchFields),
-                _fields(_exploreFields),
-                _fields(_infoFields),
-                _fields(_tocFields),
-                _fields(_contentFields),
-              ],
-            ),
-          ),
+          _fields(_basicFields, showActions: true),
+          _fields(_searchFields),
+          _fields(_exploreFields),
+          _fields(_infoFields),
+          _fields(_tocFields),
+          _fields(_contentFields),
         ],
       ),
     );
   }
 
-  Widget _check(String label, bool value, ValueChanged<bool> onChanged) {
-    return InkWell(
-      onTap: () => onChanged(!value),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Checkbox(value: value, onChanged: (v) => onChanged(v ?? false), visualDensity: VisualDensity.compact),
-          Text(label),
-        ],
-      ),
-    );
+  String _getCheckKeyWord() {
+    final raw = readPath(_data, 'ruleSearch.checkKeyWord');
+    return raw?.toString() ?? '';
   }
 
-  Widget _fields(List<SourceEditorField> fields) {
+  void _saveCurrentToData() {
+    for (final entry in _controllers.entries) {
+      final value = entry.value.text.trim();
+      if (value.isEmpty) {
+        writePath(_data, entry.key, null);
+        continue;
+      }
+      final field = _findField(entry.key);
+      if (field?.type == SourceFieldType.checkbox) {
+        writePath(_data, entry.key, value == 'true');
+      } else if (field?.type == SourceFieldType.dropdown) {
+        writePath(_data, entry.key, int.tryParse(value) ?? 0);
+      } else {
+        writePath(_data, entry.key, value);
+      }
+    }
+  }
+
+  Widget _fields(List<SourceEditorField> fields, {bool showActions = false}) {
     return ListView(
       padding: const EdgeInsets.all(16),
-      children: fields.map((field) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: TextField(
-            controller: _controllers[field.path],
-            maxLines: field.maxLines,
-            decoration: InputDecoration(
-              labelText: field.label,
-              hintText: field.hint,
-              border: const OutlineInputBorder(),
-              alignLabelWithHint: field.maxLines > 1,
-            ),
-            style: TextStyle(
-              fontFamily: field.maxLines > 2 ? 'monospace' : null,
-              fontSize: field.maxLines > 2 ? 12 : null,
-            ),
+      children: [
+        ...fields.map((field) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: _buildField(field),
+          );
+        }),
+        if (showActions) ...[
+          const Divider(height: 24),
+          _buildActionButtons(),
+          const SizedBox(height: 40),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildField(SourceEditorField field) {
+    final controller = _controllers[field.path];
+
+    switch (field.type) {
+      case SourceFieldType.checkbox:
+        final value = controller?.text == 'true';
+        return CheckboxListTile(
+          title: Text(field.label),
+          value: value,
+          onChanged: (v) {
+            controller?.text = (v ?? false).toString();
+            setState(() {});
+          },
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          dense: true,
+        );
+
+      case SourceFieldType.dropdown:
+        final currentIndex = int.tryParse(controller?.text ?? '') ?? 0;
+        return DropdownButtonFormField<int>(
+          initialValue: (currentIndex >= 0 && currentIndex < (field.options?.length ?? 0))
+              ? currentIndex
+              : 0,
+          decoration: InputDecoration(
+            labelText: field.label,
+            border: const OutlineInputBorder(),
+          ),
+          items: field.options?.asMap().entries.map((e) {
+            return DropdownMenuItem(value: e.key, child: Text(e.value));
+          }).toList() ?? [],
+          onChanged: (v) {
+            controller?.text = (v ?? 0).toString();
+            setState(() {});
+          },
+        );
+
+      default:
+        return TextField(
+          controller: controller,
+          maxLines: field.maxLines,
+          decoration: InputDecoration(
+            labelText: field.label,
+            hintText: field.hint,
+            border: const OutlineInputBorder(),
+            alignLabelWithHint: field.maxLines > 1,
+          ),
+          style: TextStyle(
+            fontFamily: field.maxLines > 2 ? 'monospace' : null,
+            fontSize: field.maxLines > 2 ? 12 : null,
           ),
         );
-      }).toList(),
+    }
+  }
+
+  Widget _buildActionButtons() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        ActionChip(
+          avatar: const Icon(Icons.login, size: 18),
+          label: const Text('登录'),
+          onPressed: () {
+            _saveCurrentToData();
+            Navigator.pushNamed(
+              context,
+              AppRoutes.sourceLogin,
+              arguments: SourceLoginPageArgs(
+                sourceUrl: (_data['bookSourceUrl'] ?? '').toString(),
+                sourceName: (_data['bookSourceName'] ?? '书源').toString(),
+                type: 'bookSource',
+                loginUi: (_data['loginUi'] ?? '').toString(),
+                loginUrl: (_data['loginUrl'] ?? '').toString(),
+                variableComment: (_data['variableComment'] ?? '').toString(),
+                header: (_data['header'] ?? '').toString(),
+              ),
+            );
+          },
+        ),
+        ActionChip(
+          avatar: const Icon(Icons.bug_report, size: 18),
+          label: const Text('调试'),
+          onPressed: () {
+            _saveCurrentToData();
+            Navigator.pushNamed(
+              context,
+              AppRoutes.sourceDebug,
+              arguments: {
+                'sourceUrl': (_data['bookSourceUrl'] ?? '').toString(),
+                'sourceName': (_data['bookSourceName'] ?? '书源').toString(),
+                'checkKeyWord': _getCheckKeyWord(),
+                'exploreUrl': (_data['exploreUrl'] ?? '').toString(),
+              },
+            );
+          },
+        ),
+        ActionChip(
+          avatar: const Icon(Icons.code, size: 18),
+          label: const Text('变量'),
+          onPressed: () {
+            _showVariableDialog();
+          },
+        ),
+      ],
     );
+  }
+
+  Future<void> _showVariableDialog() async {
+    final token = context.read<UserProvider>().token ?? '';
+    final sourceUrl = (_data['bookSourceUrl'] ?? '').toString();
+    final api = ApiService.instance;
+
+    String currentValue = '';
+    try {
+      final resp = await api.getSourcesVariable(token, sourceUrl);
+      currentValue = resp['data']?.toString() ?? '';
+    } catch (_) {}
+
+    if (!mounted) return;
+    final controller = TextEditingController(text: currentValue);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('源变量'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if ((_data['variableComment'] ?? '').toString().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text((_data['variableComment'] ?? '').toString(),
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(ctx).colorScheme.onSurfaceVariant)),
+              ),
+            TextField(
+              controller: controller,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: '输入变量值',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(controller.text),
+              child: const Text('保存')),
+        ],
+      ),
+    );
+
+    if (result != null && mounted) {
+      try {
+        await api.setSourcesVariable(token, sourceUrl, result);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('变量已保存')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('变量保存失败: $e')),
+          );
+        }
+      }
+    }
   }
 }

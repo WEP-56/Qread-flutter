@@ -1,16 +1,22 @@
 import 'dart:convert';
 
+enum SourceFieldType { text, checkbox, dropdown }
+
 class SourceEditorField {
   final String path;
   final String label;
   final int maxLines;
   final String? hint;
+  final SourceFieldType type;
+  final List<String>? options;
 
   const SourceEditorField({
     required this.path,
     required this.label,
     this.maxLines = 1,
     this.hint,
+    this.type = SourceFieldType.text,
+    this.options,
   });
 }
 
