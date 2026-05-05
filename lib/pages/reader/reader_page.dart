@@ -149,14 +149,72 @@ class _ReaderPageState extends State<ReaderPage> {
     );
   }
 
+  bool _isHtmlContent(String content) {
+    return RegExp(r'<\s*(img|p|div|br|a|span|table|video|source)', caseSensitive: false)
+        .hasMatch(content);
+  }
+
+  String _proxyImages(String html) {
+    final baseUrl = AppConstants.apiBase;
+    return html.replaceAllMapped(
+      RegExp(r"""<img\s[^>]*src\s*=\s*["']([^"']+)["'][^>]*>""", caseSensitive: false),
+      (match) {
+        final fullTag = match.group(0) ?? '';
+        final src = match.group(1) ?? '';
+        if (src.isEmpty || src.startsWith('$baseUrl/proxypng')) return fullTag;
+        final proxied = '$baseUrl/proxypng?url=${Uri.encodeComponent(src)}';
+        return fullTag.replaceFirst(src, proxied);
+      },
+    );
+  }
+
   Widget _buildReadableContent(ReaderProvider provider) {
     final chapter = provider.currentChapter;
-    final paragraphs = provider.content.split(RegExp(r'\n+'));
+    final content = provider.content;
+
+    if (_isHtmlContent(content)) {
+      return ListView(
+        controller: _scrollController,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        children: [
+          if (chapter?.title != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(
+                chapter!.title!,
+                style: TextStyle(
+                  fontSize: _fontSize + 4,
+                  fontWeight: FontWeight.bold,
+                  color: const Color(0xFF333333),
+                  height: _lineHeight,
+                ),
+              ),
+            ),
+          Html(
+            data: _proxyImages(content),
+            style: {
+              'img': Style(
+                margin: Margins.only(bottom: 8),
+              ),
+              'p': Style(
+                margin: Margins.only(bottom: 8),
+                fontSize: FontSize(_fontSize),
+                lineHeight: LineHeight(_lineHeight),
+                color: const Color(0xFF333333),
+              ),
+            },
+          ),
+        ],
+      );
+    }
+
+    // Plain text rendering (novels)
+    final paragraphs = content.split(RegExp(r'\n+'));
 
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      itemCount: paragraphs.length + 1, // +1 for chapter title
+      itemCount: paragraphs.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
           return Padding(
