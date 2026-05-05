@@ -13,6 +13,9 @@ class ReaderProvider extends ChangeNotifier {
   bool _loadingContent = false;
   String? _error;
 
+  // Prefetch cache: chapterIndex -> content text
+  final Map<int, String> _prefetchCache = {};
+
   Book? get book => _book;
   List<Chapter> get chapters => _chapters;
   Set<int> get readChapters => _readChapters;
@@ -36,6 +39,7 @@ class ReaderProvider extends ChangeNotifier {
     _content = '';
     _chapters = [];
     _readChapters = {};
+    _prefetchCache.clear();
     _error = null;
     notifyListeners();
   }
@@ -55,18 +59,20 @@ class ReaderProvider extends ChangeNotifier {
         bookname: _book!.name,
       );
 
-      // Load read chapters
       try {
         final readStr = await ApiService.instance.getBookread(
           accessToken,
           _book!.bookUrl ?? '',
         );
         if (readStr.isNotEmpty) {
-          _readChapters = readStr.split(',').map((s) => int.tryParse(s.trim()) ?? -1).where((i) => i >= 0).toSet();
+          _readChapters = readStr
+              .split(',')
+              .map((s) => int.tryParse(s.trim()) ?? -1)
+              .where((i) => i >= 0)
+              .toSet();
         }
       } catch (_) {}
 
-      // Ensure current index is valid
       if (_currentChapterIndex >= _chapters.length) {
         _currentChapterIndex = 0;
       }
@@ -74,7 +80,6 @@ class ReaderProvider extends ChangeNotifier {
       _loadingChapters = false;
       notifyListeners();
 
-      // Auto-load current chapter content
       await loadContent(accessToken, _currentChapterIndex);
     } catch (e) {
       _error = e.toString();
@@ -83,13 +88,27 @@ class ReaderProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> loadContent(String accessToken, int chapterIndex) async {
+  Future<void> loadContent(String accessToken, int chapterIndex, {bool silent = false}) async {
     if (_book == null || chapterIndex < 0 || chapterIndex >= _chapters.length) return;
 
-    _currentChapterIndex = chapterIndex;
-    _loadingContent = true;
-    _error = null;
-    notifyListeners();
+    // Check prefetch cache first
+    if (_prefetchCache.containsKey(chapterIndex)) {
+      if (!silent) {
+        _currentChapterIndex = chapterIndex;
+        _content = _prefetchCache[chapterIndex]!;
+        _loadingContent = false;
+        _readChapters.add(chapterIndex);
+        notifyListeners();
+      }
+      return;
+    }
+
+    if (!silent) {
+      _currentChapterIndex = chapterIndex;
+      _loadingContent = true;
+      _error = null;
+      notifyListeners();
+    }
 
     try {
       final data = await ApiService.instance.getBookContentNew(
@@ -99,11 +118,17 @@ class ReaderProvider extends ChangeNotifier {
         _book!.origin ?? '',
         bookname: _book!.name,
       );
-      _content = data['text']?.toString() ?? '';
+      final text = data['text']?.toString() ?? '';
+
+      if (silent) {
+        _prefetchCache[chapterIndex] = text;
+        return;
+      }
+
+      _content = text;
       _loadingContent = false;
       notifyListeners();
 
-      // Mark as read
       _readChapters.add(chapterIndex);
       try {
         await ApiService.instance.addreadchapter(
@@ -113,9 +138,11 @@ class ReaderProvider extends ChangeNotifier {
         );
       } catch (_) {}
     } catch (e) {
-      _error = e.toString();
-      _loadingContent = false;
-      notifyListeners();
+      if (!silent) {
+        _error = e.toString();
+        _loadingContent = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -146,7 +173,6 @@ class ReaderProvider extends ChangeNotifier {
         index: _currentChapterIndex,
         pos: pos ?? 0.0,
       );
-      // Update local book object
       _book = Book(
         bookUrl: _book!.bookUrl,
         name: _book!.name,
