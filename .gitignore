@@ -60,3 +60,4 @@ Thumbs.db
 # Generated (build_runner output - not used, we write manually)
 # *.g.dart and *.freezed.dart are committed as they are handwritten
 Qread-source
+output

@@ -60,8 +60,49 @@ class _AdaptiveWebViewState extends State<AdaptiveWebView> {
   }
 
   Future<void> _initMobile() async {
-    if (mounted) {
-      setState(() {});
+    try {
+      late final WebViewController controller;
+      controller = WebViewController()
+        ..setJavaScriptMode(
+          widget.enableJs ? JavaScriptMode.unrestricted : JavaScriptMode.disabled,
+        )
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onNavigationRequest: (request) async {
+              final url = request.url;
+              if (_isCustomScheme(url)) {
+                await widget.onCustomScheme?.call(url);
+                return NavigationDecision.prevent;
+              }
+              return NavigationDecision.navigate;
+            },
+            onPageStarted: (_) {
+              if (mounted) setState(() => _loading = true);
+            },
+            onPageFinished: (_) async {
+              final js = widget.injectJs;
+              if (js != null && js.isNotEmpty) {
+                try {
+                  await controller.runJavaScript(js);
+                } catch (_) {}
+              }
+              if (mounted) setState(() => _loading = false);
+            },
+          ),
+        );
+
+      _mobileController = controller;
+      await controller.loadRequest(
+        Uri.parse(widget.url),
+        headers: widget.headers,
+      );
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _loading = false;
+      });
     }
   }
 
@@ -186,44 +227,9 @@ class _AdaptiveWebViewState extends State<AdaptiveWebView> {
         ? (_windowsController == null
             ? const SizedBox.shrink()
             : win.Webview(_windowsController!))
-        : WebView(
-            initialUrl: 'about:blank',
-            javascriptMode: widget.enableJs ? JavascriptMode.unrestricted : JavascriptMode.disabled,
-            gestureNavigationEnabled: true,
-            navigationDelegate: (request) async {
-              final url = request.url;
-              if (_isCustomScheme(url)) {
-                await widget.onCustomScheme?.call(url);
-                return NavigationDecision.prevent;
-              }
-              return NavigationDecision.navigate;
-            },
-            onWebViewCreated: (controller) async {
-              _mobileController = controller;
-              try {
-                await controller.loadUrl(widget.url, headers: widget.headers);
-              } catch (e) {
-                if (mounted) {
-                  setState(() {
-                    _error = e.toString();
-                    _loading = false;
-                  });
-                }
-              }
-            },
-            onPageStarted: (_) {
-              if (mounted) setState(() => _loading = true);
-            },
-            onPageFinished: (_) async {
-              final js = widget.injectJs;
-              if (js != null && js.isNotEmpty && _mobileController != null) {
-                try {
-                  await _mobileController!.runJavascript(js);
-                } catch (_) {}
-              }
-              if (mounted) setState(() => _loading = false);
-            },
-          );
+        : (_mobileController == null
+            ? const SizedBox.shrink()
+            : WebViewWidget(controller: _mobileController!));
 
     return Stack(
       children: [

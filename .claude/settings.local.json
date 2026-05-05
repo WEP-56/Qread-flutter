@@ -3,7 +3,9 @@
     "allow": [
       "Bash(flutter analyze *)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(flutter pub *)"
+      "Bash(flutter pub *)",
+      "Bash(flutter build *)",
+      "Bash(flutter doctor *)"
     ]
   }
 }
