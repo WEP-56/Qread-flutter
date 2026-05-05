@@ -2,9 +2,11 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../config/routes.dart';
 import '../../models/rss_source.dart';
 import '../../providers/rss_manage_provider.dart';
 import '../../providers/user_provider.dart';
+import 'rss_source_editor_page.dart';
 
 class RssSourcePage extends StatefulWidget {
   const RssSourcePage({Key? key}) : super(key: key);
@@ -54,7 +56,7 @@ class _RssSourcePageState extends State<RssSourcePage> {
       body: _buildBody(userProvider, provider),
       floatingActionButton: provider.canEdit
           ? FloatingActionButton(
-              onPressed: _showImportDialog,
+              onPressed: _openCreateEditor,
               child: const Icon(Icons.add),
             )
           : null,
@@ -212,9 +214,9 @@ class _RssSourcePageState extends State<RssSourcePage> {
             const SizedBox(height: 16),
             Center(
               child: ElevatedButton.icon(
-                onPressed: _showImportDialog,
+                onPressed: _openCreateEditor,
                 icon: const Icon(Icons.add),
-                label: const Text('导入订阅源'),
+                label: const Text('新建订阅源'),
               ),
             ),
           ],
@@ -323,43 +325,18 @@ class _RssSourcePageState extends State<RssSourcePage> {
     final raw = await provider.exportOne(_token(), source.sourceUrl ?? '');
     if (!mounted) return;
     final singleJson = _extractSingleSourceJson(raw ?? '');
-    final controller = TextEditingController(text: _prettyJson(singleJson));
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('编辑订阅源 - ${source.sourceName ?? ''}'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            controller: controller,
-            maxLines: 12,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          TextButton(
-            onPressed: () async {
-              final text = controller.text.trim();
-              if (text.isEmpty) return;
-              Navigator.pop(ctx);
-              final result = await context.read<RssManageProvider>().editSource(
-                    _token(),
-                    id: source.sourceUrl,
-                    json: text,
-                  );
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(result ? '修改成功' : '修改失败')),
-                );
-              }
-            },
-            child: const Text('保存'),
-          ),
-        ],
+    final changed = await Navigator.pushNamed(
+      context,
+      AppRoutes.rssSourceEditor,
+      arguments: RssSourceEditorPageArgs(
+        title: '编辑订阅源',
+        id: source.sourceUrl,
+        initialJson: singleJson,
       ),
     );
+    if (changed == true && mounted) {
+      _loadSources();
+    }
   }
 
   Future<void> _exportAll(RssManageProvider provider) async {
@@ -382,15 +359,6 @@ class _RssSourcePageState extends State<RssSourcePage> {
     );
   }
 
-  String _prettyJson(String raw) {
-    try {
-      final decoded = jsonDecode(raw);
-      return const JsonEncoder.withIndent('  ').convert(decoded);
-    } catch (_) {
-      return raw;
-    }
-  }
-
   String _extractSingleSourceJson(String raw) {
     try {
       final decoded = jsonDecode(raw);
@@ -399,6 +367,20 @@ class _RssSourcePageState extends State<RssSourcePage> {
       }
     } catch (_) {}
     return raw;
+  }
+
+  Future<void> _openCreateEditor() async {
+    final changed = await Navigator.pushNamed(
+      context,
+      AppRoutes.rssSourceEditor,
+      arguments: const RssSourceEditorPageArgs(
+        title: '新建订阅源',
+        initialJson: '{}',
+      ),
+    );
+    if (changed == true && mounted) {
+      _loadSources();
+    }
   }
 }
 

@@ -79,7 +79,7 @@ class _AdaptiveWebViewState extends State<AdaptiveWebView> {
 
       final controller = win.WebviewController();
       await controller.initialize();
-      await controller.setPopupWindowPolicy(win.WebviewPopupWindowPolicy.deny);
+      await controller.setPopupWindowPolicy(win.WebviewPopupWindowPolicy.sameWindow);
 
       final userAgent = widget.headers['User-Agent'] ?? widget.headers['user-agent'];
       if (userAgent != null && userAgent.isNotEmpty) {
@@ -121,6 +121,12 @@ class _AdaptiveWebViewState extends State<AdaptiveWebView> {
             }
           }
         } catch (_) {}
+      });
+
+      controller.url.listen((url) async {
+        if (_isCustomScheme(url)) {
+          await widget.onCustomScheme?.call(url);
+        }
       });
 
       await controller.loadUrl(widget.url);

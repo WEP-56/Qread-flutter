@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models/book_source.dart';
 import '../services/api_service.dart';
@@ -379,7 +380,8 @@ class SourceManageProvider extends ChangeNotifier {
 
   Future<String?> importSources(String accessToken, String jsonContent) async {
     try {
-      final result = await ApiService.instance.saveBookSources(accessToken, jsonContent);
+      final normalized = _normalizeImportJson(jsonContent);
+      final result = await ApiService.instance.saveBookSources(accessToken, normalized);
       if (result['isSuccess'] == true) {
         await loadSources(accessToken, refresh: true);
         return result['errorMsg']?.toString();
@@ -392,6 +394,17 @@ class SourceManageProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     }
+  }
+
+  String _normalizeImportJson(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return '[]';
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is List) return jsonEncode(decoded);
+      if (decoded is Map) return jsonEncode([decoded]);
+    } catch (_) {}
+    return text;
   }
 
   Future<String?> exportSelectedSources(String accessToken) async {

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models/rss_source.dart';
 import '../services/api_service.dart';
@@ -111,9 +112,10 @@ class RssManageProvider extends ChangeNotifier {
 
   Future<String?> importSources(String accessToken, String jsonContent) async {
     try {
+      final normalized = _normalizeImportJson(jsonContent);
       final result = await ApiService.instance.saveRssSources(
         accessToken,
-        source: jsonContent,
+        source: normalized,
         urls: '',
       );
       if (result['isSuccess'] == true) {
@@ -128,6 +130,17 @@ class RssManageProvider extends ChangeNotifier {
       notifyListeners();
       return null;
     }
+  }
+
+  String _normalizeImportJson(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return '[]';
+    try {
+      final decoded = jsonDecode(text);
+      if (decoded is List) return jsonEncode(decoded);
+      if (decoded is Map) return jsonEncode([decoded]);
+    } catch (_) {}
+    return text;
   }
 
   Future<bool> toggleEnabled(String accessToken, RssSource source) async {

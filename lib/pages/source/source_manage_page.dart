@@ -1,10 +1,11 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../../config/routes.dart';
 import '../../models/book_source.dart';
 import '../../providers/source_manage_provider.dart';
 import '../../providers/user_provider.dart';
+import 'book_source_editor_page.dart';
 
 class SourceManagePage extends StatefulWidget {
   const SourceManagePage({Key? key}) : super(key: key);
@@ -53,7 +54,7 @@ class _SourceManagePageState extends State<SourceManagePage> {
       appBar: _buildAppBar(provider),
       body: _buildBody(userProvider, provider),
       floatingActionButton: provider.selectMode ? null : FloatingActionButton(
-        onPressed: () => _showImportDialog(),
+        onPressed: _openCreateEditor,
         child: const Icon(Icons.add),
       ),
     );
@@ -253,9 +254,9 @@ class _SourceManagePageState extends State<SourceManagePage> {
               const Text('暂无书源', style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: () => _showImportDialog(),
+                onPressed: _openCreateEditor,
                 icon: const Icon(Icons.add),
-                label: const Text('导入书源'),
+                label: const Text('新建书源'),
               ),
             ],
           ),
@@ -475,47 +476,18 @@ class _SourceManagePageState extends State<SourceManagePage> {
     final jsonStr = detail?['data']?['json']?.toString() ?? '';
 
     if (!mounted) return;
-
-    final controller = TextEditingController(text: _prettyJson(jsonStr));
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('编辑书源 - ${source.bookSourceName ?? ''}'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: TextField(
-            controller: controller,
-            maxLines: 12,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          TextButton(
-            onPressed: () async {
-              final text = controller.text.trim();
-              if (text.isEmpty) return;
-              Navigator.pop(ctx);
-              final success = await context.read<SourceManageProvider>().editSource(
-                _token(),
-                id: source.bookSourceUrl,
-                json: text,
-              );
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(success ? '修改成功' : '修改失败')),
-                );
-              }
-            },
-            child: const Text('保存'),
-          ),
-        ],
+    final changed = await Navigator.pushNamed(
+      context,
+      AppRoutes.bookSourceEditor,
+      arguments: BookSourceEditorPageArgs(
+        title: '编辑书源',
+        id: source.bookSourceUrl,
+        initialJson: jsonStr,
       ),
     );
+    if (changed == true && mounted) {
+      _loadSources();
+    }
   }
 
   void _showBatchGroupDialog() {
@@ -596,12 +568,17 @@ class _SourceManagePageState extends State<SourceManagePage> {
     }
   }
 
-  String _prettyJson(String raw) {
-    try {
-      final decoded = jsonDecode(raw);
-      return const JsonEncoder.withIndent('  ').convert(decoded);
-    } catch (_) {
-      return raw;
+  Future<void> _openCreateEditor() async {
+    final changed = await Navigator.pushNamed(
+      context,
+      AppRoutes.bookSourceEditor,
+      arguments: const BookSourceEditorPageArgs(
+        title: '新建书源',
+        initialJson: '{}',
+      ),
+    );
+    if (changed == true && mounted) {
+      _loadSources();
     }
   }
 }

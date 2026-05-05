@@ -48,6 +48,20 @@ class ApiService {
     _dio.options.baseUrl = AppConstants.apiBase;
   }
 
+  Options _plainTextBodyOptions() {
+    return Options(
+      contentType: Headers.textPlainContentType,
+      responseType: ResponseType.json,
+    );
+  }
+
+  Options _jsonBodyOptions() {
+    return Options(
+      contentType: Headers.jsonContentType,
+      responseType: ResponseType.json,
+    );
+  }
+
   // ============ 用户 ============
 
   Future<Map<String, dynamic>> login(String username, String password) async {
@@ -305,7 +319,8 @@ class ApiService {
   Future<Map<String, dynamic>> saveBookSources(String accessToken, String content) async {
     final resp = await _dio.post('/saveBookSources',
         queryParameters: {'accessToken': accessToken},
-        data: content);
+        data: content,
+        options: _plainTextBodyOptions());
     return resp.data;
   }
 
@@ -327,7 +342,8 @@ class ApiService {
   Future<Map<String, dynamic>> saveBookSource(String accessToken, String content) async {
     final resp = await _dio.post('/saveBookSource',
         queryParameters: {'accessToken': accessToken},
-        data: content);
+        data: content,
+        options: _plainTextBodyOptions());
     return resp.data;
   }
 
@@ -357,7 +373,8 @@ class ApiService {
   Future<Map<String, dynamic>> delbookSources(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/delbookSources',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
@@ -373,28 +390,32 @@ class ApiService {
   Future<Map<String, dynamic>> stopbookSources(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/stopbookSources',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
   Future<Map<String, dynamic>> startbookSources(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/startbookSources',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
   Future<Map<String, dynamic>> stopbookSourceExplores(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/stopbookSourceExplores',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
   Future<Map<String, dynamic>> startbookSourceExplores(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/startbookSourceExplores',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
@@ -417,14 +438,16 @@ class ApiService {
   Future<Map<String, dynamic>> topallSource(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/topallSource',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
   Future<Map<String, dynamic>> bottomallSource(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/bottomallSource',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
@@ -440,14 +463,16 @@ class ApiService {
           'st': st,
           if (group != null) 'group': group,
         },
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
   Future<Map<String, dynamic>> getbookSourcejson(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/getbookSourcejson',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
@@ -667,7 +692,10 @@ class ApiService {
       'accessToken': accessToken,
       if (source != null) 'source': source,
       if (urls != null) 'urls': urls,
-    });
+    }, options: Options(
+      contentType: Headers.formUrlEncodedContentType,
+      responseType: ResponseType.json,
+    ));
     return resp.data;
   }
 
@@ -682,7 +710,8 @@ class ApiService {
   Future<Map<String, dynamic>> editRssSources(String accessToken, {String? id, required String json}) async {
     final resp = await _dio.post('/editRssSources',
         queryParameters: {'accessToken': accessToken},
-        data: {'id': id, 'json': json});
+        data: {'id': id, 'json': json},
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
@@ -697,7 +726,8 @@ class ApiService {
   Future<Map<String, dynamic>> delRssSources(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/delRssSources',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
@@ -713,14 +743,16 @@ class ApiService {
   Future<Map<String, dynamic>> startRssSources(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/startRssSources',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
   Future<Map<String, dynamic>> stopRssSources(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/stopRssSources',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
@@ -743,14 +775,16 @@ class ApiService {
   Future<Map<String, dynamic>> topallrssSource(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/topallrssSource',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
   Future<Map<String, dynamic>> bottomallrssSource(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/bottomallrssSource',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
@@ -766,14 +800,16 @@ class ApiService {
           'st': st,
           'group': group,
         },
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
   Future<Map<String, dynamic>> getRssSourcejson(String accessToken, List<String> ids) async {
     final resp = await _dio.post('/getRssSourcejson',
         queryParameters: {'accessToken': accessToken},
-        data: ids);
+        data: ids,
+        options: _jsonBodyOptions());
     return resp.data;
   }
 
