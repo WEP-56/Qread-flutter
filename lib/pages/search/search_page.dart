@@ -17,16 +17,17 @@ class SearchPage extends StatefulWidget {
 class _SearchPageState extends State<SearchPage> {
   final _controller = TextEditingController();
   List<SearchResult> _results = [];
-  bool _loading = false;
+  bool _loadingSources = false;
   bool _searching = false;
   int _completedSources = 0;
   int _totalSources = 0;
   List<BookSource> _enabledSources = [];
+  String? _sourceError;
 
   @override
   void initState() {
     super.initState();
-    _loadSources();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadSources());
   }
 
   @override
@@ -39,23 +40,50 @@ class _SearchPageState extends State<SearchPage> {
     final token = context.read<UserProvider>().token;
     if (token == null) return;
 
+    setState(() {
+      _loadingSources = true;
+      _sourceError = null;
+    });
+
     try {
       final pageData = await ApiService.instance.getBookSourcesPage(token);
-      final md5 = pageData['md5']?.toString();
-      final totalPages = int.tryParse(pageData['page']?.toString() ?? '1') ?? 1;
+      final data = pageData['data'] ?? pageData;
+      final md5 = data['md5']?.toString();
+      final totalPages = int.tryParse(data['page']?.toString() ?? '1') ?? 1;
 
       List<BookSource> allSources = [];
-      for (int p = 1; p <= totalPages; p++) {
-        final sources = await ApiService.instance.getBookSourcesNew(
-          token,
-          md5: md5,
-          page: p,
-        );
-        allSources.addAll(sources);
+      if (md5 != null) {
+        for (int p = 1; p <= totalPages; p++) {
+          final sources = await ApiService.instance.getBookSourcesNew(
+            token,
+            md5: md5,
+            page: p,
+          );
+          if (sources.isEmpty) break;
+          allSources.addAll(sources);
+        }
       }
 
-      _enabledSources = allSources.where((s) => s.enabled == true && s.searchUrl != null && s.searchUrl!.isNotEmpty).toList();
-    } catch (_) {}
+      if (allSources.isEmpty) {
+        allSources = await ApiService.instance.getBookSources(token);
+      }
+
+      if (mounted) {
+        setState(() {
+          _enabledSources = allSources
+              .where((s) => s.enabled == true)
+              .toList();
+          _loadingSources = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _sourceError = '加载书源失败: $e';
+          _loadingSources = false;
+        });
+      }
+    }
   }
 
   Future<void> _search(String keyword) async {
@@ -63,40 +91,29 @@ class _SearchPageState extends State<SearchPage> {
     final token = context.read<UserProvider>().token;
     if (token == null) return;
 
-    setState(() {
-      _loading = true;
-      _searching = true;
-      _results = [];
-      _completedSources = 0;
-      _totalSources = _enabledSources.length;
-    });
+    // Reload sources if needed
+    if (_enabledSources.isEmpty && !_loadingSources) {
+      await _loadSources();
+    }
 
-    // If no sources loaded, try single-source search
     if (_enabledSources.isEmpty) {
-      try {
-        final results = await ApiService.instance.searchBook(token, keyword);
-        if (mounted) {
-          setState(() {
-            _results = results;
-            _loading = false;
-            _searching = false;
-          });
-        }
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            _loading = false;
-            _searching = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-        }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('没有可用的搜索书源，请先导入支持搜索的书源')),
+        );
       }
       return;
     }
 
-    // Multi-source parallel search - search first 6 sources concurrently
+    setState(() {
+      _searching = true;
+      _results = [];
+      _completedSources = 0;
+      _totalSources = _enabledSources.length.clamp(0, 6);
+    });
+
+    // Multi-source parallel search - search up to 6 sources concurrently
     final searchSources = _enabledSources.take(6).toList();
-    _totalSources = searchSources.length;
 
     final futures = searchSources.map((source) async {
       try {
@@ -133,7 +150,6 @@ class _SearchPageState extends State<SearchPage> {
     if (mounted) {
       setState(() {
         _results = merged.values.toList();
-        _loading = false;
         _searching = false;
       });
     }
@@ -164,7 +180,54 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Widget _buildBody() {
-    if (_loading) {
+    if (_loadingSources) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('正在加载书源...', style: TextStyle(color: Colors.grey)),
+          ],
+        ),
+      );
+    }
+
+    if (_sourceError != null && _enabledSources.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_sourceError!, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 16),
+            ElevatedButton(onPressed: _loadSources, child: const Text('重试')),
+          ],
+        ),
+      );
+    }
+
+    if (_enabledSources.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.search_off, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            const Text('没有可用的搜索书源'),
+            const SizedBox(height: 8),
+            const Text('请确保已导入支持搜索的书源，且处于启用状态',
+                style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadSources,
+              child: const Text('刷新书源'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_searching) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -172,9 +235,16 @@ class _SearchPageState extends State<SearchPage> {
             const CircularProgressIndicator(),
             const SizedBox(height: 16),
             Text(
-              _searching ? '搜索中 $_completedSources/$_totalSources ...' : '加载中...',
+              '搜索中 $_completedSources/$_totalSources ...',
               style: const TextStyle(color: Colors.grey),
             ),
+            if (_totalSources > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(
+                  value: _totalSources > 0 ? _completedSources / _totalSources : null,
+                ),
+              ),
           ],
         ),
       );
@@ -184,15 +254,18 @@ class _SearchPageState extends State<SearchPage> {
       return const Center(child: Text('输入关键词搜索'));
     }
 
-    return ListView.builder(
-      itemCount: _results.length,
-      itemBuilder: (context, index) {
-        final result = _results[index];
-        return _SearchResultTile(
-          result: result,
-          onAdd: () => _addToBookshelf(result),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: _loadSources,
+      child: ListView.builder(
+        itemCount: _results.length,
+        itemBuilder: (context, index) {
+          final result = _results[index];
+          return _SearchResultTile(
+            result: result,
+            onAdd: () => _addToBookshelf(result),
+          );
+        },
+      ),
     );
   }
 
@@ -201,25 +274,32 @@ class _SearchPageState extends State<SearchPage> {
     if (token == null) return;
 
     try {
-      await ApiService.instance.saveBook(token, Book(
-        bookUrl: result.bookUrl,
-        name: result.name,
-        author: result.author,
-        coverUrl: result.coverUrl,
-        intro: result.intro,
-        tocUrl: result.tocUrl,
-        origin: result.origin,
-        originName: result.originName,
-        type: 0,
-        group: 0,
-      ));
+      await ApiService.instance.saveBook(
+        token,
+        Book(
+          bookUrl: result.bookUrl,
+          name: result.name,
+          author: result.author,
+          coverUrl: result.coverUrl,
+          intro: result.intro,
+          tocUrl: result.tocUrl,
+          origin: result.origin,
+          originName: result.originName,
+          type: 0,
+          group: 0,
+        ),
+      );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已加入书架')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已加入书架')),
+        );
         context.read<BookshelfProvider>().loadBookshelf(token, refresh: true);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('添加失败: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('添加失败: $e')),
+        );
       }
     }
   }

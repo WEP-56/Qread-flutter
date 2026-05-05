@@ -8,6 +8,7 @@ import '../pages/search/search_page.dart';
 import '../pages/login/login_page.dart';
 import '../pages/source/source_manage_page.dart';
 import '../pages/rss/rss_source_page.dart';
+import '../pages/discover/explore_books_page.dart';
 
 class AppRoutes {
   static const String home = '/';
@@ -16,6 +17,7 @@ class AppRoutes {
   static const String search = '/search';
   static const String sourceManage = '/sourceManage';
   static const String rssSource = '/rssSource';
+  static const String discoverExplore = '/discover/explore';
 
   static final Map<String, WidgetBuilder> routes = {
     home: (_) => const HomePage(),
@@ -30,6 +32,13 @@ class AppRoutes {
       return MaterialPageRoute(
         settings: settings, // pass settings to preserve arguments
         builder: (_) => const ReaderPage(),
+      );
+    }
+    if (settings.name == discoverExplore) {
+      final args = settings.arguments as ExploreBooksPageArgs;
+      return MaterialPageRoute(
+        settings: settings,
+        builder: (_) => ExploreBooksPage(args: args),
       );
     }
     return null;

@@ -1,9 +1,12 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../config/routes.dart';
 import '../../providers/discover_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../services/api_service.dart';
 import '../../models/book_source.dart';
+import 'explore_books_page.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({Key? key}) : super(key: key);
@@ -53,7 +56,8 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
         actions: [
           IconButton(
             icon: const Icon(Icons.source),
-            onPressed: () => Navigator.pushNamed(context, '/sourceManage'),
+            tooltip: '书源管理',
+            onPressed: () => Navigator.pushNamed(context, AppRoutes.sourceManage),
           ),
         ],
       ),
@@ -81,7 +85,7 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
       );
     }
     if (provider.exploreSources.isEmpty) {
-      return const Center(child: Text('暂无发现源，请先导入书源'));
+      return const Center(child: Text('暂无可用书源'));
     }
 
     final groups = <String, List<BookSource>>{};
@@ -140,9 +144,12 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
       }
 
       final data = result['data'];
-      final found = data?['found'] as String? ?? source.exploreUrl ?? '';
+      final foundRaw = data?['found'];
 
-      if (found.isEmpty) {
+      // found can be String (&&:: format or JSON array) or List (deserialized JSON)
+      final categories = _parseCategories(foundRaw);
+
+      if (categories.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('该书源没有发现页')),
@@ -150,11 +157,6 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
         }
         return;
       }
-
-      final categories = found.split('&&').map((e) {
-        final parts = e.split('::');
-        return MapEntry(parts.isNotEmpty ? parts[0] : '', parts.length > 1 ? parts[1] : parts[0]);
-      }).toList();
 
       if (!mounted) return;
 
@@ -200,10 +202,53 @@ class _DiscoverPageState extends State<DiscoverPage> with AutomaticKeepAliveClie
     }
   }
 
+  List<MapEntry<String, String>> _parseCategories(dynamic foundRaw) {
+    if (foundRaw == null) return [];
+
+    // JSON array from deserialized response
+    if (foundRaw is List) {
+      return foundRaw.whereType<Map>().map((e) {
+        final title = (e['title'] ?? e['name'] ?? '').toString();
+        final url = (e['url'] ?? '').toString();
+        return MapEntry(title, url.isNotEmpty ? url : title);
+      }).toList();
+    }
+
+    final found = foundRaw.toString().trim();
+    if (found.isEmpty) return [];
+
+    // JSON array string
+    if (found.startsWith('[')) {
+      try {
+        final list = jsonDecode(found) as List;
+        return list.whereType<Map>().map((e) {
+          final title = (e['title'] ?? e['name'] ?? '').toString();
+          final url = (e['url'] ?? '').toString();
+          return MapEntry(title, url.isNotEmpty ? url : title);
+        }).toList();
+      } catch (_) {}
+    }
+
+    // Standard &&:: format
+    return found.split(RegExp(r'(&&|\n)+')).map((e) {
+      final parts = e.split('::');
+      return MapEntry(
+        parts.isNotEmpty ? parts[0].trim() : '',
+        parts.length > 1 ? parts[1].trim() : (parts.isNotEmpty ? parts[0].trim() : ''),
+      );
+    }).where((e) => e.key.isNotEmpty).toList();
+  }
+
   void _navigateToExplore(BookSource source, String url, String title) {
-    // TODO: 导航到发现详情页
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('打开发现: $title')),
+    Navigator.pushNamed(
+      context,
+      AppRoutes.discoverExplore,
+      arguments: ExploreBooksPageArgs(
+        title: title,
+        sourceName: source.bookSourceName ?? '',
+        sourceUrl: source.bookSourceUrl ?? '',
+        exploreUrl: url,
+      ),
     );
   }
 }

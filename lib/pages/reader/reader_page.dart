@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_html/flutter_html.dart';
 import 'package:provider/provider.dart';
+import '../../config/constants.dart';
 import '../../providers/reader_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../models/book.dart';
@@ -16,6 +18,7 @@ class _ReaderPageState extends State<ReaderPage> {
   final ScrollController _scrollController = ScrollController();
   double _fontSize = 18.0;
   double _lineHeight = 1.8;
+  String? _token;
 
   @override
   void initState() {
@@ -23,11 +26,11 @@ class _ReaderPageState extends State<ReaderPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final book = ModalRoute.of(context)?.settings.arguments as Book?;
       if (book != null) {
+        _token = context.read<UserProvider>().token;
         final provider = context.read<ReaderProvider>();
         provider.setBook(book);
-        final token = context.read<UserProvider>().token;
-        if (token != null) {
-          provider.loadChapters(token);
+        if (_token != null) {
+          provider.loadChapters(_token!);
         }
       }
     });
@@ -36,14 +39,15 @@ class _ReaderPageState extends State<ReaderPage> {
   @override
   void dispose() {
     _scrollController.dispose();
-    _saveProgress();
+    if (_token != null) {
+      context.read<ReaderProvider>().saveProgress(_token!);
+    }
     super.dispose();
   }
 
   Future<void> _saveProgress() async {
-    final token = context.read<UserProvider>().token;
-    if (token != null) {
-      await context.read<ReaderProvider>().saveProgress(token);
+    if (_token != null) {
+      await context.read<ReaderProvider>().saveProgress(_token!);
     }
   }
 
@@ -112,14 +116,35 @@ class _ReaderPageState extends State<ReaderPage> {
       body: SafeArea(
         child: provider.loadingContent && provider.content.isEmpty
             ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  Expanded(
-                    child: _buildReadableContent(provider),
+            : provider.error != null && provider.content.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            '加载章节失败\n${provider.error}',
+                            style: const TextStyle(color: Colors.red),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _retry,
+                          child: const Text('重试'),
+                        ),
+                      ],
+                    ),
+                  )
+                : Column(
+                    children: [
+                      Expanded(
+                        child: _buildReadableContent(provider),
+                      ),
+                      _buildProgressBar(provider),
+                    ],
                   ),
-                  _buildProgressBar(provider),
-                ],
-              ),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
+import 'json_helpers.dart';
 
 part 'rss_article.g.dart';
 
@@ -47,7 +48,18 @@ class RssArticle {
     this.read,
   });
 
-  factory RssArticle.fromJson(Map<String, dynamic> json) =>
-      _$RssArticleFromJson(json);
+  factory RssArticle.fromJson(Map<String, dynamic> json) => RssArticle(
+        origin: toStringVal(json['origin']),
+        sort: toStringVal(json['sort']),
+        title: toStringVal(json['title']),
+        order: toInt(json['order']),
+        link: toStringVal(json['link']),
+        pubDate: toStringVal(json['pubDate']),
+        description: toStringVal(json['description']),
+        content: toStringVal(json['content']),
+        image: toStringVal(json['image']),
+        read: toBool(json['read']),
+      );
+
   Map<String, dynamic> toJson() => _$RssArticleToJson(this);
 }

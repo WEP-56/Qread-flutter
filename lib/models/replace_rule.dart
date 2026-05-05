@@ -1,4 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
+import 'json_helpers.dart';
 
 part 'replace_rule.g.dart';
 
@@ -47,7 +48,18 @@ class ReplaceRule {
     this.order,
   });
 
-  factory ReplaceRule.fromJson(Map<String, dynamic> json) =>
-      _$ReplaceRuleFromJson(json);
+  factory ReplaceRule.fromJson(Map<String, dynamic> json) => ReplaceRule(
+        id: toInt(json['id']),
+        group: toStringVal(json['group']),
+        name: toStringVal(json['name']),
+        replaceRegex: toStringVal(json['replaceRegex']),
+        replacement: toStringVal(json['replacement']),
+        scope: toStringVal(json['scope']),
+        isEnabled: toBool(json['isEnabled']),
+        isRegex: toBool(json['isRegex']),
+        sortOrder: toInt(json['sortOrder']),
+        order: toInt(json['order']),
+      );
+
   Map<String, dynamic> toJson() => _$ReplaceRuleToJson(this);
 }

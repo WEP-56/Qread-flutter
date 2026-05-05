@@ -1,16 +1,38 @@
-# qread
+# Qread Flutter
 
-A new Flutter project.
+Flutter client for Qread (轻阅读), targeting Windows and Android.
 
-## Getting Started
+## Scope
 
-This project is a starting point for a Flutter application.
+- Rebuild the original client from the open web client and backend API.
+- Keep backend behavior unchanged.
+- Deliver a Flutter desktop/mobile client with the same core reading flow.
 
-A few resources to get you started if this is your first Flutter project:
+## Repository Layout
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- `lib/`: Flutter application code
+- `doc/API.md`: backend API reference
+- `doc/FEATURE_TODO.md`: feature checklist mapped to pages
+- `doc/HANDOVER.md`: handover and project context
+- `doc/DEVELOPMENT_BASELINE.md`: current engineering baseline and next milestones
+- `Qread-source/`: reference web client/backend materials
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Current Baseline
+
+- Login flow is connected.
+- Bookshelf, discover, RSS, profile, search, and reader flows have partial implementation.
+- Discover result page and source management page now have initial Flutter-side scaffolding.
+- Flutter static analysis passes.
+
+## Run
+
+```bash
+flutter pub get
+flutter run -d windows
+```
+
+For Android:
+
+```bash
+flutter run -d android
+```

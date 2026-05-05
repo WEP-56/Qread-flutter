@@ -1,4 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
+import 'json_helpers.dart';
 
 part 'search_result.g.dart';
 
@@ -51,7 +52,19 @@ class SearchResult {
     this.wordCount,
   });
 
-  factory SearchResult.fromJson(Map<String, dynamic> json) =>
-      _$SearchResultFromJson(json);
+  factory SearchResult.fromJson(Map<String, dynamic> json) => SearchResult(
+        bookUrl: toStringVal(json['bookUrl']),
+        name: toStringVal(json['name']),
+        author: toStringVal(json['author']),
+        coverUrl: toStringVal(json['coverUrl']),
+        intro: toStringVal(json['intro']),
+        kind: toStringVal(json['kind']),
+        latestChapterTitle: toStringVal(json['latestChapterTitle']),
+        tocUrl: toStringVal(json['tocUrl']),
+        origin: toStringVal(json['origin']),
+        originName: toStringVal(json['originName']),
+        wordCount: toStringVal(json['wordCount']),
+      );
+
   Map<String, dynamic> toJson() => _$SearchResultToJson(this);
 }

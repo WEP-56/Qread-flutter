@@ -1,4 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
+import 'json_helpers.dart';
 
 part 'rss_source.g.dart';
 
@@ -83,7 +84,27 @@ class RssSource {
     this.variableComment,
   });
 
-  factory RssSource.fromJson(Map<String, dynamic> json) =>
-      _$RssSourceFromJson(json);
+  factory RssSource.fromJson(Map<String, dynamic> json) => RssSource(
+        sourceUrl: toStringVal(json['sourceUrl']),
+        sourceName: toStringVal(json['sourceName']),
+        sourceIcon: toStringVal(json['sourceIcon']),
+        sourceGroup: toStringVal(json['sourceGroup']),
+        sourceComment: toStringVal(json['sourceComment']),
+        enabled: toBool(json['enabled']),
+        sortUrl: toStringVal(json['sortUrl']),
+        articleStyle: toInt(json['articleStyle']),
+        customOrder: toInt(json['customOrder']),
+        singleUrl: toBool(json['singleUrl']),
+        enableJs: toBool(json['enableJs']),
+        loadWithBaseUrl: toBool(json['loadWithBaseUrl']),
+        enabledLoadWithBaseUrl: toBool(json['enabledLoadWithBaseUrl']),
+        header: toStringVal(json['header']),
+        loginUrl: toStringVal(json['loginUrl']),
+        loginUi: toStringVal(json['loginUi']),
+        loginCheckJs: toStringVal(json['loginCheckJs']),
+        variable: toStringVal(json['variable']),
+        variableComment: toStringVal(json['variableComment']),
+      );
+
   Map<String, dynamic> toJson() => _$RssSourceToJson(this);
 }

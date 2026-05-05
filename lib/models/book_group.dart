@@ -1,4 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
+import 'json_helpers.dart';
 
 part 'book_group.g.dart';
 
@@ -23,7 +24,12 @@ class BookGroup {
     this.show,
   });
 
-  factory BookGroup.fromJson(Map<String, dynamic> json) =>
-      _$BookGroupFromJson(json);
+  factory BookGroup.fromJson(Map<String, dynamic> json) => BookGroup(
+        groupId: toInt(json['groupId']),
+        groupName: toStringVal(json['groupName']),
+        order: toInt(json['order']),
+        show: toBool(json['show']),
+      );
+
   Map<String, dynamic> toJson() => _$BookGroupToJson(this);
 }

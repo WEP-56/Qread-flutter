@@ -1,4 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
+import 'json_helpers.dart';
 
 part 'book.g.dart';
 
@@ -95,6 +96,30 @@ class Book {
     this.variable,
   });
 
-  factory Book.fromJson(Map<String, dynamic> json) => _$BookFromJson(json);
+  factory Book.fromJson(Map<String, dynamic> json) => Book(
+        bookUrl: toStringVal(json['bookUrl']),
+        name: toStringVal(json['name']),
+        author: toStringVal(json['author']),
+        coverUrl: toStringVal(json['coverUrl']),
+        intro: toStringVal(json['intro']),
+        customCoverUrl: toStringVal(json['customCoverUrl']),
+        tocUrl: toStringVal(json['tocUrl']),
+        origin: toStringVal(json['origin']),
+        originName: toStringVal(json['originName']),
+        type: toInt(json['type']),
+        group: toInt(json['group']),
+        latestChapterTitle: toStringVal(json['latestChapterTitle']),
+        latestChapterTime: toInt(json['latestChapterTime']),
+        lastCheckTime: toInt(json['lastCheckTime']),
+        lastCheckCount: toInt(json['lastCheckCount']),
+        totalChapterNum: toInt(json['totalChapterNum']),
+        durChapterTitle: toStringVal(json['durChapterTitle']),
+        durChapterIndex: toInt(json['durChapterIndex']),
+        durChapterPos: toInt(json['durChapterPos']),
+        canUpdate: toBool(json['canUpdate']),
+        order: toInt(json['order']),
+        variable: toStringVal(json['variable']),
+      );
+
   Map<String, dynamic> toJson() => _$BookToJson(this);
 }

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../providers/user_provider.dart';
 import '../../config/constants.dart';
 import '../../services/api_service.dart';
+import '../../services/storage_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
@@ -135,14 +136,18 @@ class _ProfilePageState extends State<ProfilePage> {
             child: const Text('取消'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              final navigator = Navigator.of(context);
               final url = controller.text.trim();
               if (url.isNotEmpty) {
                 AppConstants.baseUrl = url;
                 ApiService.instance.setBaseUrl(url);
+                final storage = await StorageService.instance;
+                await storage.setBaseUrl(url);
+                if (!mounted) return;
                 setState(() {});
               }
-              Navigator.pop(context);
+              navigator.pop();
             },
             child: const Text('确定'),
           ),

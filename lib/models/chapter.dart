@@ -1,4 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
+import 'json_helpers.dart';
 
 part 'chapter.g.dart';
 
@@ -35,7 +36,15 @@ class Chapter {
     this.tag,
   });
 
-  factory Chapter.fromJson(Map<String, dynamic> json) =>
-      _$ChapterFromJson(json);
+  factory Chapter.fromJson(Map<String, dynamic> json) => Chapter(
+        bookUrl: toStringVal(json['bookUrl']),
+        title: toStringVal(json['title']),
+        chapterIndex: toInt(json['chapterIndex']),
+        isVolume: toBool(json['isVolume']),
+        isVip: toBool(json['isVip']),
+        resourceUrl: toStringVal(json['resourceUrl']),
+        tag: toStringVal(json['tag']),
+      );
+
   Map<String, dynamic> toJson() => _$ChapterToJson(this);
 }

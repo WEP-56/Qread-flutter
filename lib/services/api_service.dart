@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../config/constants.dart';
 import '../models/book.dart';
@@ -21,6 +22,19 @@ class ApiService {
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     ));
     _dio.interceptors.add(LogInterceptor(requestBody: true, responseBody: true));
+    _dio.interceptors.add(InterceptorsWrapper(
+      onResponse: (response, handler) {
+        // 后端部分响应 content-type 为 text/plain，Dio 不自动 JSON 解码
+        if (response.data is String) {
+          try {
+            response.data = jsonDecode(response.data as String);
+          } catch (_) {
+            // 非 JSON 字符串（如 appversion），保持原样
+          }
+        }
+        handler.next(response);
+      },
+    ));
   }
 
   static ApiService get instance => _instance ??= ApiService._();
@@ -275,18 +289,179 @@ class ApiService {
     return [];
   }
 
-  Future<Map<String, dynamic>> saveBookSources(String accessToken, String source) async {
-    final resp = await _dio.post('/saveBookSources', queryParameters: {
+  Future<bool> getCanSource(String accessToken) async {
+    final resp = await _dio.get('/getcansource', queryParameters: {
       'accessToken': accessToken,
+    });
+    final json = resp.data;
+    // 后端有权限时返回 {"isSuccess": true}（无 data 字段）
+    // 无权限时返回 {"isSuccess": false, "errorMsg": "CAN_NOT"}
+    if (json['isSuccess'] == true) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<Map<String, dynamic>> saveBookSources(String accessToken, String content) async {
+    final resp = await _dio.post('/saveBookSources',
+        queryParameters: {'accessToken': accessToken},
+        data: content);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> saveBookSourcesV2(
+    String accessToken, {
+    String? group,
+    required String source,
+    String? urls,
+  }) async {
+    final resp = await _dio.post('/saveBookSourcesv2', queryParameters: {
+      'accessToken': accessToken,
+      if (group != null) 'group': group,
       'source': source,
+      if (urls != null) 'urls': urls,
     });
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> deleteBookSources(String accessToken, List<String> urls) async {
-    final resp = await _dio.post('/delbookSources', queryParameters: {
+  Future<Map<String, dynamic>> saveBookSource(String accessToken, String content) async {
+    final resp = await _dio.post('/saveBookSource',
+        queryParameters: {'accessToken': accessToken},
+        data: content);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> getbookSources(String accessToken, String id) async {
+    final resp = await _dio.get('/getbookSources', queryParameters: {
       'accessToken': accessToken,
-      'urls': urls.join(','),
+      'id': id,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> editbookSources(String accessToken, {String? id, required String json}) async {
+    final resp = await _dio.post('/editbookSources',
+        queryParameters: {'accessToken': accessToken},
+        data: {'id': id, 'json': json});
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> delbookSource(String accessToken, String id) async {
+    final resp = await _dio.post('/delbookSource', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> delbookSources(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/delbookSources',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> stopbookSource(String accessToken, String id, {required int st}) async {
+    final resp = await _dio.post('/stopbookSource', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+      'st': st,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> stopbookSources(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/stopbookSources',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> startbookSources(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/startbookSources',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> stopbookSourceExplores(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/stopbookSourceExplores',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> startbookSourceExplores(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/startbookSourceExplores',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> topSource(String accessToken, String id) async {
+    final resp = await _dio.post('/topSource', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> bottomSource(String accessToken, String id) async {
+    final resp = await _dio.post('/bottomSource', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> topallSource(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/topallSource',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> bottomallSource(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/bottomallSource',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> editsourcegroup(
+    String accessToken, {
+    required String st,
+    String? group,
+    required List<String> ids,
+  }) async {
+    final resp = await _dio.post('/editsourcegroup',
+        queryParameters: {
+          'accessToken': accessToken,
+          'st': st,
+          if (group != null) 'group': group,
+        },
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> getbookSourcejson(String accessToken, List<String> ids) async {
+    final resp = await _dio.post('/getbookSourcejson',
+        queryParameters: {'accessToken': accessToken},
+        data: ids);
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> getSourcesloginui(
+    String accessToken, {
+    String? url,
+    String? bookurl,
+    String? chapter,
+  }) async {
+    final resp = await _dio.get('/getSourcesloginui', queryParameters: {
+      'accessToken': accessToken,
+      if (url != null) 'url': url,
+      if (bookurl != null) 'bookurl': bookurl,
+      if (chapter != null) 'chapter': chapter,
     });
     return resp.data;
   }

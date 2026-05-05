@@ -1,4 +1,5 @@
 import 'package:json_annotation/json_annotation.dart';
+import 'json_helpers.dart';
 
 part 'book_source.g.dart';
 
@@ -99,7 +100,31 @@ class BookSource {
     this.loginCheckJs,
   });
 
-  factory BookSource.fromJson(Map<String, dynamic> json) =>
-      _$BookSourceFromJson(json);
+  factory BookSource.fromJson(Map<String, dynamic> json) => BookSource(
+        bookSourceUrl: toStringVal(json['bookSourceUrl']),
+        bookSourceName: toStringVal(json['bookSourceName']),
+        bookSourceGroup: toStringVal(json['bookSourceGroup']),
+        bookSourceType: toInt(json['bookSourceType']),
+        bookSourceComment: toStringVal(json['bookSourceComment']),
+        searchUrl: toStringVal(json['searchUrl']),
+        exploreUrl: toStringVal(json['exploreUrl']),
+        ruleSearch: json['ruleSearch'],
+        ruleExplore: json['ruleExplore'],
+        ruleBookInfo: json['ruleBookInfo'],
+        ruleToc: json['ruleToc'],
+        ruleContent: json['ruleContent'],
+        enabled: toBool(json['enabled']),
+        enabledExplore: toBool(json['enabledExplore']),
+        customOrder: toInt(json['customOrder']),
+        lastUpdateTime: toInt(json['lastUpdateTime']),
+        respondTime: toInt(json['respondTime']),
+        weight: toInt(json['weight']),
+        variable: toStringVal(json['variable']),
+        header: toStringVal(json['header']),
+        loginUrl: toStringVal(json['loginUrl']),
+        loginUi: toStringVal(json['loginUi']),
+        loginCheckJs: toStringVal(json['loginCheckJs']),
+      );
+
   Map<String, dynamic> toJson() => _$BookSourceToJson(this);
 }

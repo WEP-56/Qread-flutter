@@ -1,14 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'app.dart';
+import 'config/constants.dart';
 import 'providers/user_provider.dart';
 import 'providers/bookshelf_provider.dart';
 import 'providers/discover_provider.dart';
 import 'providers/rss_provider.dart';
 import 'providers/reader_provider.dart';
+import 'providers/source_manage_provider.dart';
+import 'services/api_service.dart';
+import 'services/storage_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final storage = await StorageService.instance;
+  final savedBaseUrl = storage.baseUrl;
+  if (savedBaseUrl != null && savedBaseUrl.isNotEmpty) {
+    AppConstants.baseUrl = savedBaseUrl;
+    ApiService.instance.setBaseUrl(savedBaseUrl);
+  }
   runApp(const QreadApp());
 }
 
@@ -24,6 +34,7 @@ class QreadApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => DiscoverProvider()),
         ChangeNotifierProvider(create: (_) => RssProvider()),
         ChangeNotifierProvider(create: (_) => ReaderProvider()),
+        ChangeNotifierProvider(create: (_) => SourceManageProvider()),
       ],
       child: const App(),
     );
