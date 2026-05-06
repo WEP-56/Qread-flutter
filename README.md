@@ -1,9 +1,7 @@
 ### Qread Flutter
 
-基于项目：https://github.com/autobcb/read 后端制作的flutter客户端（第三方）
+基于项目：[read](https://github.com/autobcb/read)后端制作的flutter客户端（第三方）
 
-#### 截图
-null
 
 #### 范围
 
@@ -18,7 +16,6 @@ null
 
 #### 当前基准
 
-- 登录流程已连通。
 - 书架、发现、订阅源、个人中心、搜索、阅读、书架、净化、管理员账号相关权限已部分实现，但欠缺打磨。
 - Flutter 静态分析通过。
 
@@ -35,8 +32,13 @@ Android 端运行：
 flutter run -d android
 ```
 
-#### 打包
+#### 构建可分发包体
 仅制作了windows、android适配，其他设备可用性未知
+
+#### 致谢
+本项目灵感来源于 [read](https://github.com/autobcb/read)，并使用了以下优秀的开源库：
+[legado](https://github.com/gedoor/legado)
 
 #### License
 MIT
+
