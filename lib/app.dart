@@ -10,7 +10,7 @@ class App extends StatefulWidget {
 }
 
 class _AppState extends State<App> {
-  ThemeMode _themeMode = ThemeMode.system;
+  final ThemeMode _themeMode = ThemeMode.system;
 
   @override
   Widget build(BuildContext context) {

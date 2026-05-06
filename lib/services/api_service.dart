@@ -21,7 +21,8 @@ class ApiService {
       receiveTimeout: 15000,
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
     ));
-    _dio.interceptors.add(LogInterceptor(requestBody: true, responseBody: true));
+    _dio.interceptors
+        .add(LogInterceptor(requestBody: true, responseBody: true));
     _dio.interceptors.add(InterceptorsWrapper(
       onResponse: (response, handler) {
         // 后端部分响应 content-type 为 text/plain，Dio 不自动 JSON 解码
@@ -72,7 +73,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> register(String username, String password) async {
+  Future<Map<String, dynamic>> register(
+      String username, String password) async {
     // 后端没有独立的注册接口，注册也走 /login
     final resp = await _dio.post('/login', data: {
       'username': username,
@@ -97,7 +99,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<List<Book>> getBookshelfNew(String accessToken, {String? md5, int page = 1}) async {
+  Future<List<Book>> getBookshelfNew(String accessToken,
+      {String? md5, int page = 1}) async {
     final params = <String, dynamic>{
       'accessToken': accessToken,
       'page': page.toString(),
@@ -138,7 +141,8 @@ class ApiService {
     return resp.data['data']?.toString() ?? '';
   }
 
-  Future<Map<String, dynamic>> addreadchapter(String accessToken, String readchapter, String url) async {
+  Future<Map<String, dynamic>> addreadchapter(
+      String accessToken, String readchapter, String url) async {
     final resp = await _dio.post('/addreadchapter', queryParameters: {
       'accessToken': accessToken,
       'readchapter': readchapter,
@@ -147,14 +151,16 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> deleteBooks(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> deleteBooks(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/deleteBooks', data: ids);
     return resp.data;
   }
 
   // ============ 书籍 ============
 
-  Future<Map<String, dynamic>> getBookInfo(String accessToken, String bookUrl, String sourceUrl) async {
+  Future<Map<String, dynamic>> getBookInfo(
+      String accessToken, String bookUrl, String sourceUrl) async {
     final resp = await _dio.get('/getBookinfo', queryParameters: {
       'accessToken': accessToken,
       'url': bookUrl,
@@ -163,7 +169,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<List<Chapter>> getChapterList(String accessToken, String bookUrl, String sourceUrl) async {
+  Future<List<Chapter>> getChapterList(
+      String accessToken, String bookUrl, String sourceUrl) async {
     final resp = await _dio.get('/getChapterList', queryParameters: {
       'accessToken': accessToken,
       'url': bookUrl,
@@ -171,7 +178,9 @@ class ApiService {
     });
     final data = resp.data['data'];
     if (data is List) {
-      return data.map((e) => Chapter.fromJson(e as Map<String, dynamic>)).toList();
+      return data
+          .map((e) => Chapter.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     return [];
   }
@@ -194,12 +203,15 @@ class ApiService {
     });
     final data = resp.data['data'];
     if (data is List) {
-      return data.map((e) => Chapter.fromJson(e as Map<String, dynamic>)).toList();
+      return data
+          .map((e) => Chapter.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     return [];
   }
 
-  Future<String> getBookContent(String accessToken, String bookUrl, int chapterIndex, String sourceUrl) async {
+  Future<String> getBookContent(String accessToken, String bookUrl,
+      int chapterIndex, String sourceUrl) async {
     final resp = await _dio.get('/getBookContent', queryParameters: {
       'accessToken': accessToken,
       'url': bookUrl,
@@ -232,7 +244,8 @@ class ApiService {
 
   // ============ 搜索 ============
 
-  Future<List<SearchResult>> searchBook(String accessToken, String keyword, {String? bookSourceUrl, int page = 1}) async {
+  Future<List<SearchResult>> searchBook(String accessToken, String keyword,
+      {String? bookSourceUrl, int page = 1}) async {
     final params = <String, dynamic>{
       'accessToken': accessToken,
       'key': keyword,
@@ -242,14 +255,18 @@ class ApiService {
     final resp = await _dio.get('/searchBook', queryParameters: params);
     final data = resp.data['data'];
     if (data is List) {
-      return data.map((e) => SearchResult.fromJson(e as Map<String, dynamic>)).toList();
+      return data
+          .map((e) => SearchResult.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     return [];
   }
 
   // ============ 发现 ============
 
-  Future<Map<String, dynamic>> getExplore(String accessToken, String sourceUrl, String exploreUrl, {int page = 1}) async {
+  Future<Map<String, dynamic>> getExplore(
+      String accessToken, String sourceUrl, String exploreUrl,
+      {int page = 1}) async {
     final resp = await _dio.get('/exploreBook', queryParameters: {
       'accessToken': accessToken,
       'bookSourceUrl': sourceUrl,
@@ -259,7 +276,9 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> getBookSourcesExploreUrl(String accessToken, String bookSourceUrl, {int need = 1}) async {
+  Future<Map<String, dynamic>> getBookSourcesExploreUrl(
+      String accessToken, String bookSourceUrl,
+      {int need = 1}) async {
     final resp = await _dio.get('/getBookSourcesExploreUrl', queryParameters: {
       'accessToken': accessToken,
       'bookSourceUrl': bookSourceUrl,
@@ -277,7 +296,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<List<BookSource>> getBookSourcesNew(String accessToken, {String? md5, int page = 1}) async {
+  Future<List<BookSource>> getBookSourcesNew(String accessToken,
+      {String? md5, int page = 1}) async {
     final params = <String, dynamic>{
       'accessToken': accessToken,
       'page': page.toString(),
@@ -286,7 +306,9 @@ class ApiService {
     final resp = await _dio.get('/getBookSourcesNew', queryParameters: params);
     final json = resp.data;
     if (json['isSuccess'] == true && json['data'] is List) {
-      return (json['data'] as List).map((e) => BookSource.fromJson(e as Map<String, dynamic>)).toList();
+      return (json['data'] as List)
+          .map((e) => BookSource.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     return [];
   }
@@ -298,7 +320,9 @@ class ApiService {
     });
     final json = resp.data;
     if (json['isSuccess'] == true && json['data'] is List) {
-      return (json['data'] as List).map((e) => BookSource.fromJson(e as Map<String, dynamic>)).toList();
+      return (json['data'] as List)
+          .map((e) => BookSource.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     return [];
   }
@@ -316,7 +340,8 @@ class ApiService {
     return false;
   }
 
-  Future<Map<String, dynamic>> saveBookSources(String accessToken, String content) async {
+  Future<Map<String, dynamic>> saveBookSources(
+      String accessToken, String content) async {
     final resp = await _dio.post('/saveBookSources',
         queryParameters: {'accessToken': accessToken},
         data: content,
@@ -339,7 +364,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> saveBookSource(String accessToken, String content) async {
+  Future<Map<String, dynamic>> saveBookSource(
+      String accessToken, String content) async {
     final resp = await _dio.post('/saveBookSource',
         queryParameters: {'accessToken': accessToken},
         data: content,
@@ -347,7 +373,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> getbookSources(String accessToken, String id) async {
+  Future<Map<String, dynamic>> getbookSources(
+      String accessToken, String id) async {
     final resp = await _dio.get('/getbookSources', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -355,14 +382,16 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> editbookSources(String accessToken, {String? id, required String json}) async {
+  Future<Map<String, dynamic>> editbookSources(String accessToken,
+      {String? id, required String json}) async {
     final resp = await _dio.post('/editbookSources',
         queryParameters: {'accessToken': accessToken},
         data: {'id': id, 'json': json});
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> delbookSource(String accessToken, String id) async {
+  Future<Map<String, dynamic>> delbookSource(
+      String accessToken, String id) async {
     final resp = await _dio.post('/delbookSource', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -370,7 +399,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> delbookSources(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> delbookSources(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/delbookSources',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -378,7 +408,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> stopbookSource(String accessToken, String id, {required int st}) async {
+  Future<Map<String, dynamic>> stopbookSource(String accessToken, String id,
+      {required int st}) async {
     final resp = await _dio.post('/stopbookSource', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -387,7 +418,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> stopbookSources(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> stopbookSources(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/stopbookSources',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -395,7 +427,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> startbookSources(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> startbookSources(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/startbookSources',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -403,7 +436,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> stopbookSourceExplores(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> stopbookSourceExplores(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/stopbookSourceExplores',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -411,7 +445,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> startbookSourceExplores(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> startbookSourceExplores(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/startbookSourceExplores',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -427,7 +462,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> bottomSource(String accessToken, String id) async {
+  Future<Map<String, dynamic>> bottomSource(
+      String accessToken, String id) async {
     final resp = await _dio.post('/bottomSource', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -435,7 +471,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> topallSource(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> topallSource(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/topallSource',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -443,7 +480,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> bottomallSource(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> bottomallSource(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/bottomallSource',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -468,7 +506,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> getbookSourcejson(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> getbookSourcejson(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/getbookSourcejson',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -500,7 +539,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<List<RssSource>> getRssSourcesNew(String accessToken, {String? md5, int page = 1}) async {
+  Future<List<RssSource>> getRssSourcesNew(String accessToken,
+      {String? md5, int page = 1}) async {
     final params = <String, dynamic>{
       'accessToken': accessToken,
       'page': page.toString(),
@@ -509,7 +549,9 @@ class ApiService {
     final resp = await _dio.get('/getRssSourcessNew', queryParameters: params);
     final json = resp.data;
     if (json['isSuccess'] == true && json['data'] is List) {
-      return (json['data'] as List).map((e) => RssSource.fromJson(e as Map<String, dynamic>)).toList();
+      return (json['data'] as List)
+          .map((e) => RssSource.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     return [];
   }
@@ -521,7 +563,9 @@ class ApiService {
     final data = json['data'];
     final sourcesList = data is Map ? data['sources'] : data;
     if (json['isSuccess'] == true && sourcesList is List) {
-      return sourcesList.map((e) => RssSource.fromJson(e as Map<String, dynamic>)).toList();
+      return sourcesList
+          .map((e) => RssSource.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     return [];
   }
@@ -544,7 +588,8 @@ class ApiService {
     return raw['canEdit'] == true;
   }
 
-  Future<List<RssArticle>> getRssArticles(String accessToken, String sourceId, {String? sortUrl, int page = 1}) async {
+  Future<List<RssArticle>> getRssArticles(String accessToken, String sourceId,
+      {String? sortUrl, int page = 1}) async {
     final params = <String, dynamic>{
       'accessToken': accessToken,
       'id': sourceId,
@@ -555,7 +600,9 @@ class ApiService {
     final data = resp.data['data'];
     final articles = data is Map ? data['articles'] : data;
     if (articles is List) {
-      return articles.map((e) => RssArticle.fromJson(e as Map<String, dynamic>)).toList();
+      return articles
+          .map((e) => RssArticle.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     return [];
   }
@@ -585,7 +632,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<List<Map<String, String>>> getRsssortUrls(String accessToken, String id) async {
+  Future<List<Map<String, String>>> getRsssortUrls(
+      String accessToken, String id) async {
     final resp = await _dio.get('/getRsssortUrls', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -621,7 +669,8 @@ class ApiService {
     required String id,
     required String url,
   }) async {
-    final resp = await _dio.get('/rssshouldOverrideUrlLoading', queryParameters: {
+    final resp =
+        await _dio.get('/rssshouldOverrideUrlLoading', queryParameters: {
       'accessToken': accessToken,
       'id': id,
       'url': url,
@@ -633,7 +682,8 @@ class ApiService {
     return false;
   }
 
-  Future<Map<String, dynamic>> getRssLoginInfo(String accessToken, String id) async {
+  Future<Map<String, dynamic>> getRssLoginInfo(
+      String accessToken, String id) async {
     final resp = await _dio.get('/getRssLoginInfo', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -641,7 +691,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> putRssLoginInfo(String accessToken, String id, String info) async {
+  Future<Map<String, dynamic>> putRssLoginInfo(
+      String accessToken, String id, String info) async {
     final resp = await _dio.post('/putRssLoginInfo', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -650,7 +701,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> rssaction(String accessToken, String id, String action) async {
+  Future<Map<String, dynamic>> rssaction(
+      String accessToken, String id, String action) async {
     final resp = await _dio.post('/rssaction', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -659,7 +711,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> getRssVariable(String accessToken, String id) async {
+  Future<Map<String, dynamic>> getRssVariable(
+      String accessToken, String id) async {
     final resp = await _dio.get('/getRssVariable', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -667,7 +720,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> setRssVariable(String accessToken, String id, String info) async {
+  Future<Map<String, dynamic>> setRssVariable(
+      String accessToken, String id, String info) async {
     final resp = await _dio.post('/setRssVariable', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -676,7 +730,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<String> fetchRemoteText(String url, {Map<String, String>? headers}) async {
+  Future<String> fetchRemoteText(String url,
+      {Map<String, String>? headers}) async {
     final resp = await Dio(BaseOptions(
       connectTimeout: 15000,
       receiveTimeout: 15000,
@@ -687,19 +742,23 @@ class ApiService {
     return resp.data?.toString() ?? '';
   }
 
-  Future<Map<String, dynamic>> saveRssSources(String accessToken, {String? source, String? urls}) async {
-    final resp = await _dio.post('/saveRssSources', queryParameters: {
-      'accessToken': accessToken,
-      if (source != null) 'source': source,
-      if (urls != null) 'urls': urls,
-    }, options: Options(
-      contentType: Headers.formUrlEncodedContentType,
-      responseType: ResponseType.json,
-    ));
+  Future<Map<String, dynamic>> saveRssSources(String accessToken,
+      {String? source, String? urls}) async {
+    final resp = await _dio.post('/saveRssSources',
+        queryParameters: {
+          'accessToken': accessToken,
+          if (source != null) 'source': source,
+          if (urls != null) 'urls': urls,
+        },
+        options: Options(
+          contentType: Headers.formUrlEncodedContentType,
+          responseType: ResponseType.json,
+        ));
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> deleteRssSources(String accessToken, List<String> urls) async {
+  Future<Map<String, dynamic>> deleteRssSources(
+      String accessToken, List<String> urls) async {
     final resp = await _dio.post('/delRssSources', queryParameters: {
       'accessToken': accessToken,
       'urls': urls.join(','),
@@ -707,7 +766,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> editRssSources(String accessToken, {String? id, required String json}) async {
+  Future<Map<String, dynamic>> editRssSources(String accessToken,
+      {String? id, required String json}) async {
     final resp = await _dio.post('/editRssSources',
         queryParameters: {'accessToken': accessToken},
         data: {'id': id, 'json': json},
@@ -715,7 +775,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> delRssSource(String accessToken, String id) async {
+  Future<Map<String, dynamic>> delRssSource(
+      String accessToken, String id) async {
     final resp = await _dio.post('/delRssSource', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -723,7 +784,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> delRssSources(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> delRssSources(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/delRssSources',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -731,7 +793,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> stopRssSource(String accessToken, String id, {required int st}) async {
+  Future<Map<String, dynamic>> stopRssSource(String accessToken, String id,
+      {required int st}) async {
     final resp = await _dio.post('/stopRssSource', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -740,7 +803,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> startRssSources(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> startRssSources(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/startRssSources',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -748,7 +812,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> stopRssSources(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> stopRssSources(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/stopRssSources',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -756,7 +821,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> topRssSource(String accessToken, String id) async {
+  Future<Map<String, dynamic>> topRssSource(
+      String accessToken, String id) async {
     final resp = await _dio.post('/topRssSource', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -764,7 +830,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> bottomRssSource(String accessToken, String id) async {
+  Future<Map<String, dynamic>> bottomRssSource(
+      String accessToken, String id) async {
     final resp = await _dio.post('/bottomRssSource', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -772,7 +839,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> topallrssSource(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> topallrssSource(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/topallrssSource',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -780,7 +848,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> bottomallrssSource(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> bottomallrssSource(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/bottomallrssSource',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -805,7 +874,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> getRssSourcejson(String accessToken, List<String> ids) async {
+  Future<Map<String, dynamic>> getRssSourcejson(
+      String accessToken, List<String> ids) async {
     final resp = await _dio.post('/getRssSourcejson',
         queryParameters: {'accessToken': accessToken},
         data: ids,
@@ -813,7 +883,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> getRssSourcesloginui(String accessToken, String url) async {
+  Future<Map<String, dynamic>> getRssSourcesloginui(
+      String accessToken, String url) async {
     final resp = await _dio.get('/getRssSourcesloginui', queryParameters: {
       'accessToken': accessToken,
       'url': url,
@@ -823,7 +894,8 @@ class ApiService {
 
   // ============ 书源登录 / 变量 / 动作 ============
 
-  Future<Map<String, dynamic>> getSourcesLoginInfo(String accessToken, String bookSourceUrl) async {
+  Future<Map<String, dynamic>> getSourcesLoginInfo(
+      String accessToken, String bookSourceUrl) async {
     final resp = await _dio.get('/getLoginInfo', queryParameters: {
       'accessToken': accessToken,
       'bookSourceUrl': bookSourceUrl,
@@ -831,7 +903,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> putSourcesLoginInfo(String accessToken, String bookSourceUrl, String info) async {
+  Future<Map<String, dynamic>> putSourcesLoginInfo(
+      String accessToken, String bookSourceUrl, String info) async {
     final resp = await _dio.post('/putLoginInfo', queryParameters: {
       'accessToken': accessToken,
       'bookSourceUrl': bookSourceUrl,
@@ -860,7 +933,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> getSourcesVariable(String accessToken, String bookSourceUrl) async {
+  Future<Map<String, dynamic>> getSourcesVariable(
+      String accessToken, String bookSourceUrl) async {
     final resp = await _dio.get('/getVariable', queryParameters: {
       'accessToken': accessToken,
       'bookSourceUrl': bookSourceUrl,
@@ -868,7 +942,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> setSourcesVariable(String accessToken, String bookSourceUrl, String info) async {
+  Future<Map<String, dynamic>> setSourcesVariable(
+      String accessToken, String bookSourceUrl, String info) async {
     final resp = await _dio.post('/setVariable', queryParameters: {
       'accessToken': accessToken,
       'bookSourceUrl': bookSourceUrl,
@@ -885,7 +960,9 @@ class ApiService {
     });
     final data = resp.data['data'];
     if (data is List) {
-      return data.map((e) => BookGroup.fromJson(e as Map<String, dynamic>)).toList();
+      return data
+          .map((e) => BookGroup.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     return [];
   }
@@ -897,7 +974,9 @@ class ApiService {
     });
     final data = resp.data['data'];
     if (data is List) {
-      return data.map((e) => BookGroup.fromJson(e as Map<String, dynamic>)).toList();
+      return data
+          .map((e) => BookGroup.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
     return [];
   }
@@ -918,7 +997,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> editgroup(String accessToken, String oldname, String newname) async {
+  Future<Map<String, dynamic>> editgroup(
+      String accessToken, String oldname, String newname) async {
     final resp = await _dio.post('/editgroup', queryParameters: {
       'accessToken': accessToken,
       'oldname': oldname,
@@ -927,7 +1007,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> ordergroup(String accessToken, List<String> groups) async {
+  Future<Map<String, dynamic>> ordergroup(
+      String accessToken, List<String> groups) async {
     final resp = await _dio.post('/ordergroup', queryParameters: {
       'accessToken': accessToken,
       'groups': groups,
@@ -935,7 +1016,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> setgroup(String accessToken, {String? name, required String url}) async {
+  Future<Map<String, dynamic>> setgroup(String accessToken,
+      {String? name, required String url}) async {
     final resp = await _dio.post('/setgroup', queryParameters: {
       'accessToken': accessToken,
       if (name != null) 'name': name,
@@ -944,44 +1026,143 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> setgroups(String accessToken, {String? name, required List<String> ids}) async {
-    final resp = await _dio.post('/setgroups', queryParameters: {
-      'accessToken': accessToken,
-      if (name != null) 'name': name,
-    }, data: ids);
+  Future<Map<String, dynamic>> setgroups(String accessToken,
+      {String? name, required List<String> ids}) async {
+    final resp = await _dio.post('/setgroups',
+        queryParameters: {
+          'accessToken': accessToken,
+          if (name != null) 'name': name,
+        },
+        data: ids);
     return resp.data;
   }
 
   // ============ 替换规则 ============
 
-  Future<List<ReplaceRule>> getReplaceRules(String accessToken) async {
-    final resp = await _dio.get('/getReplaceRules', queryParameters: {
+  Future<Map<String, dynamic>> getReplaceRulesPage(String accessToken) async {
+    final resp = await _dio.get('/getReplaceRulesPage', queryParameters: {
       'accessToken': accessToken,
-    });
-    final data = resp.data['data'];
-    if (data is List) {
-      return data.map((e) => ReplaceRule.fromJson(e)).toList();
-    }
-    return [];
-  }
-
-  Future<Map<String, dynamic>> saveReplaceRule(String accessToken, ReplaceRule rule) async {
-    final resp = await _dio.post('/saveReplaceRule', queryParameters: {
-      'accessToken': accessToken,
-      'id': rule.id,
-      'group': rule.group,
-      'name': rule.name,
-      'replaceRegex': rule.replaceRegex,
-      'replacement': rule.replacement,
-      'scope': rule.scope,
-      'isEnabled': rule.isEnabled == true ? 1 : 0,
-      'isRegex': rule.isRegex == true ? 1 : 0,
-      'sortOrder': rule.sortOrder,
     });
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> deleteReplaceRule(String accessToken, int id) async {
+  Future<List<ReplaceRule>> getReplaceRulesNew(
+    String accessToken, {
+    String? md5,
+    int page = 1,
+  }) async {
+    final params = <String, dynamic>{
+      'accessToken': accessToken,
+      'page': page.toString(),
+    };
+    if (md5 != null) params['md5'] = md5;
+    final resp = await _dio.get('/getReplaceRulesNew', queryParameters: params);
+    final data = resp.data['data'];
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map((e) => ReplaceRule.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+    }
+    return [];
+  }
+
+  Future<String?> getDefaultReplaceRule(String accessToken) async {
+    final resp = await _dio.get('/getdefaultrule', queryParameters: {
+      'accessToken': accessToken,
+    });
+    return resp.data['data']?.toString();
+  }
+
+  Future<Map<String, dynamic>> addReplaceRule(
+    String accessToken,
+    ReplaceRule rule,
+  ) async {
+    final resp = await _dio.post(
+      '/addReplaceRule',
+      queryParameters: {'accessToken': accessToken},
+      data: rule.toServerJson(),
+      options: _jsonBodyOptions(),
+    );
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> saveReplaceRuleRaw(
+    String accessToken,
+    String content,
+  ) async {
+    final resp = await _dio.post(
+      '/saverule',
+      queryParameters: {'accessToken': accessToken},
+      data: content,
+      options: _plainTextBodyOptions(),
+    );
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> saveReplaceRulesRaw(
+    String accessToken,
+    String content,
+  ) async {
+    final resp = await _dio.post(
+      '/saverules',
+      queryParameters: {'accessToken': accessToken},
+      data: content,
+      options: _plainTextBodyOptions(),
+    );
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> topReplaceRule(
+      String accessToken, String id) async {
+    final resp = await _dio.post('/topReplaceRule', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> stopReplaceRule(
+    String accessToken,
+    String id, {
+    required int st,
+  }) async {
+    final resp = await _dio.post('/stopReplaceRules', queryParameters: {
+      'accessToken': accessToken,
+      'id': id,
+      'st': st,
+    });
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> stopReplaceRulesByIds(
+    String accessToken,
+    List<String> ids,
+  ) async {
+    final resp = await _dio.post(
+      '/stopReplaceRulesbyIds',
+      queryParameters: {'accessToken': accessToken},
+      data: ids,
+      options: _jsonBodyOptions(),
+    );
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> startReplaceRulesByIds(
+    String accessToken,
+    List<String> ids,
+  ) async {
+    final resp = await _dio.post(
+      '/startReplaceRulesbyIds',
+      queryParameters: {'accessToken': accessToken},
+      data: ids,
+      options: _jsonBodyOptions(),
+    );
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> deleteReplaceRule(
+      String accessToken, String id) async {
     final resp = await _dio.post('/delReplaceRule', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -989,24 +1170,56 @@ class ApiService {
     return resp.data;
   }
 
+  Future<Map<String, dynamic>> deleteReplaceRules(
+    String accessToken,
+    List<String> ids,
+  ) async {
+    final resp = await _dio.post(
+      '/delReplaceRules',
+      queryParameters: {'accessToken': accessToken},
+      data: ids,
+      options: _jsonBodyOptions(),
+    );
+    return resp.data;
+  }
+
+  Future<Map<String, dynamic>> updateUseReplaceRule(
+    String accessToken, {
+    required String url,
+    required int useReplaceRule,
+  }) async {
+    final resp = await _dio.get('/updateuseReplaceRule', queryParameters: {
+      'accessToken': accessToken,
+      'url': url,
+      'useReplaceRule': useReplaceRule,
+    });
+    return resp.data;
+  }
+
   // ============ 书籍操作 ============
 
-  Future<Map<String, dynamic>> saveBook(String accessToken, Book book, {int useReplaceRule = 0}) async {
-    final resp = await _dio.post('/saveBook', queryParameters: {
-      'accessToken': accessToken,
-      'useReplaceRule': useReplaceRule,
-    }, data: book.toJson());
+  Future<Map<String, dynamic>> saveBook(String accessToken, Book book,
+      {int useReplaceRule = 0}) async {
+    final resp = await _dio.post('/saveBook',
+        queryParameters: {
+          'accessToken': accessToken,
+          'useReplaceRule': useReplaceRule,
+        },
+        data: book.toJson());
     return resp.data;
   }
 
   Future<Map<String, dynamic>> deleteBook(String accessToken, Book book) async {
-    final resp = await _dio.post('/deleteBook', queryParameters: {
-      'accessToken': accessToken,
-    }, data: book.toJson());
+    final resp = await _dio.post('/deleteBook',
+        queryParameters: {
+          'accessToken': accessToken,
+        },
+        data: book.toJson());
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> refreshBook(String accessToken, String bookUrl) async {
+  Future<Map<String, dynamic>> refreshBook(
+      String accessToken, String bookUrl) async {
     final resp = await _dio.get('/refreshBook', queryParameters: {
       'accessToken': accessToken,
       'bookurl': bookUrl,
@@ -1014,7 +1227,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> changeBookType(String accessToken, String bookUrl, int type) async {
+  Future<Map<String, dynamic>> changeBookType(
+      String accessToken, String bookUrl, int type) async {
     final resp = await _dio.get('/changebooktype', queryParameters: {
       'accessToken': accessToken,
       'bookUrl': bookUrl,
@@ -1026,7 +1240,10 @@ class ApiService {
   // ============ 书签 ============
 
   Future<Map<String, dynamic>> addBookmark(String accessToken,
-      {required String url, required String name, required int index, required double pos}) async {
+      {required String url,
+      required String name,
+      required int index,
+      required double pos}) async {
     final resp = await _dio.post('/addbookmark', queryParameters: {
       'accessToken': accessToken,
       'url': url,
@@ -1037,7 +1254,8 @@ class ApiService {
     return resp.data;
   }
 
-  Future<List<Map<String, dynamic>>> getBookmarks(String accessToken, String url) async {
+  Future<List<Map<String, dynamic>>> getBookmarks(
+      String accessToken, String url) async {
     final resp = await _dio.get('/getbookmark', queryParameters: {
       'accessToken': accessToken,
       'url': url,
@@ -1049,7 +1267,8 @@ class ApiService {
     return [];
   }
 
-  Future<Map<String, dynamic>> deleteBookmark(String accessToken, String id) async {
+  Future<Map<String, dynamic>> deleteBookmark(
+      String accessToken, String id) async {
     final resp = await _dio.post('/delbookmark', queryParameters: {
       'accessToken': accessToken,
       'id': id,
@@ -1067,6 +1286,8 @@ class ApiService {
   }
 
   String _encodeParams(Map<String, String> params) {
-    return params.entries.map((e) => '${e.key}=${Uri.encodeComponent(e.value)}').join('&');
+    return params.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
   }
 }

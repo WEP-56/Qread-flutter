@@ -68,6 +68,9 @@ class Book {
   @JsonKey(name: 'order')
   int? order;
 
+  @JsonKey(name: 'useReplaceRule')
+  bool? useReplaceRule;
+
   @JsonKey(name: 'variable')
   String? variable;
 
@@ -93,6 +96,7 @@ class Book {
     this.durChapterPos,
     this.canUpdate,
     this.order,
+    this.useReplaceRule,
     this.variable,
   });
 
@@ -118,6 +122,7 @@ class Book {
         durChapterPos: toInt(json['durChapterPos']),
         canUpdate: toBool(json['canUpdate']),
         order: toInt(json['order']),
+        useReplaceRule: toBool(json['useReplaceRule']),
         variable: toStringVal(json['variable']),
       );
 

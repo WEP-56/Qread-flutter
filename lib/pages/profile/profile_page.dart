@@ -27,19 +27,24 @@ class _ProfilePageState extends State<ProfilePage> {
                   leading: CircleAvatar(
                     backgroundColor: Theme.of(context).primaryColor,
                     child: Text(
-                      userProvider.username?.substring(0, 1).toUpperCase() ?? '?',
+                      userProvider.username?.substring(0, 1).toUpperCase() ??
+                          '?',
                       style: const TextStyle(color: Colors.white, fontSize: 24),
                     ),
                   ),
                   title: Text(
-                    userProvider.isLoggedIn ? userProvider.username ?? '' : '未登录',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    userProvider.isLoggedIn
+                        ? userProvider.username ?? ''
+                        : '未登录',
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text(userProvider.isLoggedIn ? '已登录' : '点击登录'),
                   trailing: userProvider.isLoggedIn
                       ? TextButton(
                           onPressed: () => userProvider.logout(),
-                          child: const Text('退出', style: TextStyle(color: Colors.red)),
+                          child: const Text('退出',
+                              style: TextStyle(color: Colors.red)),
                         )
                       : const Icon(Icons.chevron_right),
                   onTap: userProvider.isLoggedIn
@@ -58,7 +63,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       leading: const Icon(Icons.source),
                       title: const Text('书源管理'),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () => Navigator.pushNamed(context, '/sourceManage'),
+                      onTap: () =>
+                          Navigator.pushNamed(context, '/sourceManage'),
                     ),
                     ListTile(
                       leading: const Icon(Icons.rss_feed),
@@ -71,9 +77,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       leading: const Icon(Icons.cleaning_services),
                       title: const Text('替换规则'),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        // TODO: 替换规则页面
-                      },
+                      onTap: () =>
+                          Navigator.pushNamed(context, '/replaceRules'),
                     ),
                   ],
                 ),
@@ -88,7 +93,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     ListTile(
                       leading: const Icon(Icons.dns),
                       title: const Text('服务器地址'),
-                      subtitle: Text(AppConstants.baseUrl, style: const TextStyle(fontSize: 12)),
+                      subtitle: Text(AppConstants.baseUrl,
+                          style: const TextStyle(fontSize: 12)),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => _showServerUrlDialog(context),
                     ),
@@ -99,12 +105,12 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: 24),
 
               // 关于
-              Card(
+              const Card(
                 child: Column(
                   children: [
                     ListTile(
-                      leading: const Icon(Icons.info_outline),
-                      title: const Text('关于'),
+                      leading: Icon(Icons.info_outline),
+                      title: Text('关于'),
                       subtitle: Text('v${AppConstants.appVersion}'),
                     ),
                   ],

@@ -30,6 +30,7 @@ class ReaderProvider extends ChangeNotifier {
     }
     return null;
   }
+
   bool get hasPrevious => _currentChapterIndex > 0;
   bool get hasNext => _currentChapterIndex < _chapters.length - 1;
 
@@ -57,6 +58,7 @@ class ReaderProvider extends ChangeNotifier {
         _book!.bookUrl ?? '',
         _book!.origin ?? '',
         bookname: _book!.name,
+        useReplaceRule: _book!.useReplaceRule == false ? 0 : 1,
       );
 
       try {
@@ -88,8 +90,11 @@ class ReaderProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> loadContent(String accessToken, int chapterIndex, {bool silent = false}) async {
-    if (_book == null || chapterIndex < 0 || chapterIndex >= _chapters.length) return;
+  Future<void> loadContent(String accessToken, int chapterIndex,
+      {bool silent = false}) async {
+    if (_book == null || chapterIndex < 0 || chapterIndex >= _chapters.length) {
+      return;
+    }
 
     // Check prefetch cache first
     if (_prefetchCache.containsKey(chapterIndex)) {
@@ -117,6 +122,7 @@ class ReaderProvider extends ChangeNotifier {
         chapterIndex,
         _book!.origin ?? '',
         bookname: _book!.name,
+        useReplaceRule: _book!.useReplaceRule == false ? 0 : 1,
       );
       final text = data['text']?.toString() ?? '';
 
@@ -195,6 +201,7 @@ class ReaderProvider extends ChangeNotifier {
         durChapterPos: pos?.toInt() ?? _book!.durChapterPos ?? 0,
         canUpdate: _book!.canUpdate,
         order: _book!.order,
+        useReplaceRule: _book!.useReplaceRule,
         variable: _book!.variable,
       );
       notifyListeners();

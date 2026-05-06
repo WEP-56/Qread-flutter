@@ -28,6 +28,7 @@ Book _$BookFromJson(Map<String, dynamic> json) => Book(
       durChapterPos: json['durChapterPos'] as int?,
       canUpdate: json['canUpdate'] as bool?,
       order: json['order'] as int?,
+      useReplaceRule: json['useReplaceRule'] as bool?,
       variable: json['variable'] as String?,
     );
 
@@ -53,5 +54,6 @@ Map<String, dynamic> _$BookToJson(Book instance) => <String, dynamic>{
       'durChapterPos': instance.durChapterPos,
       'canUpdate': instance.canUpdate,
       'order': instance.order,
+      'useReplaceRule': instance.useReplaceRule,
       'variable': instance.variable,
     };
