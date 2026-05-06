@@ -374,6 +374,8 @@ class _ReaderPageState extends State<ReaderPage> {
         _loadingDisplayedChapter = false;
         _displayedContent = text;
         _laidOutChapterIndex = chapterIndex;
+        _chapterPosition = 0;
+        _currentPage = 0;
       });
 
       provider.book?.durChapterIndex = chapterIndex;
