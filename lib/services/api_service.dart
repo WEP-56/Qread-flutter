@@ -1183,7 +1183,7 @@ class ApiService {
     return resp.data;
   }
 
-  Future<Map<String, dynamic>> updateUseReplaceRule(
+  Future<dynamic> updateUseReplaceRule(
     String accessToken, {
     required String url,
     required int useReplaceRule,

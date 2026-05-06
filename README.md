@@ -1,38 +1,42 @@
-# Qread Flutter
+### Qread Flutter
 
-Flutter client for Qread (轻阅读), targeting Windows and Android.
+基于项目：https://github.com/autobcb/read 后端制作的flutter客户端（第三方）
 
-## Scope
+#### 截图
+null
 
-- Rebuild the original client from the open web client and backend API.
-- Keep backend behavior unchanged.
-- Deliver a Flutter desktop/mobile client with the same core reading flow.
+#### 范围
 
-## Repository Layout
+- 保持后端行为不变。
+- 交付具有相同核心阅读流程的 Flutter 桌面/移动客户端。
 
-- `lib/`: Flutter application code
-- `doc/API.md`: backend API reference
-- `doc/FEATURE_TODO.md`: feature checklist mapped to pages
-- `doc/HANDOVER.md`: handover and project context
-- `doc/DEVELOPMENT_BASELINE.md`: current engineering baseline and next milestones
-- `Qread-source/`: reference web client/backend materials
+#### 目录结构
 
-## Current Baseline
+- `lib/`: Flutter 应用程序代码
+- `doc/API.md`: 后端 API 参考文档
+- `doc/FEATURE_TODO.md`: 映射到页面的功能检查清单
 
-- Login flow is connected.
-- Bookshelf, discover, RSS, profile, search, and reader flows have partial implementation.
-- Discover result page and source management page now have initial Flutter-side scaffolding.
-- Flutter static analysis passes.
+#### 当前基准
 
-## Run
+- 登录流程已连通。
+- 书架、发现、订阅源、个人中心、搜索、阅读、书架、净化、管理员账号相关权限已部分实现，但欠缺打磨。
+- Flutter 静态分析通过。
+
+#### 运行
 
 ```bash
 flutter pub get
 flutter run -d windows
 ```
 
-For Android:
+Android 端运行：
 
 ```bash
 flutter run -d android
 ```
+
+#### 打包
+仅制作了windows、android适配，其他设备可用性未知
+
+#### License
+MIT

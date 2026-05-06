@@ -240,7 +240,18 @@ class _ReaderPageState extends State<ReaderPage> {
       return (_novelScrollController.offset / max).clamp(0.0, 1.0);
     }
     if (_pages.isEmpty) return 0.0;
-    return (_currentPage / _pages.length).clamp(0.0, 1.0);
+    return (_activePageIndex() / _pages.length).clamp(0.0, 1.0);
+  }
+
+  int _activePageIndex() {
+    if (_pageController.hasClients) {
+      final page = _pageController.page;
+      if (page != null) {
+        return page.round().clamp(0, _pages.isEmpty ? 0 : _pages.length - 1);
+      }
+    }
+    if (_pages.isEmpty) return 0;
+    return _currentPage.clamp(0, _pages.length - 1);
   }
 
   Future<void> _saveProgress({double? pos}) async {
@@ -556,12 +567,13 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _previousPage(ReaderProvider provider) {
     if (_pages.isEmpty) return;
-    if (_currentPage > 0) {
+    final currentPage = _activePageIndex();
+    if (currentPage > 0) {
       _pageController.previousPage(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
-      setState(() => _currentPage--);
+      setState(() => _currentPage = currentPage - 1);
     } else if (provider.hasPrevious) {
       _saveProgress(pos: 0.0);
       if (_token != null) provider.previousChapter(_token!);
@@ -570,12 +582,13 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _nextPage(ReaderProvider provider) {
     if (_pages.isEmpty) return;
-    if (_currentPage < _pages.length - 1) {
+    final currentPage = _activePageIndex();
+    if (currentPage < _pages.length - 1) {
       _pageController.nextPage(
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
-      setState(() => _currentPage++);
+      setState(() => _currentPage = currentPage + 1);
     } else if (_autoNext && provider.hasNext) {
       _saveProgress(pos: 1.0);
       if (_token != null) provider.nextChapter(_token!);
@@ -989,7 +1002,7 @@ class _ReaderPageState extends State<ReaderPage> {
       return '$current/$total';
     }
     final total = _pages.isEmpty ? 1 : _pages.length;
-    final current = total == 0 ? 1 : (_currentPage + 1).clamp(1, total);
+    final current = total == 0 ? 1 : (_activePageIndex() + 1).clamp(1, total);
     return '$current/$total';
   }
 
@@ -1497,7 +1510,7 @@ class _ReaderPageState extends State<ReaderPage> {
       return;
     }
 
-    final wasLastPage = _currentPage >= _pages.length - 1;
+    final wasLastPage = _activePageIndex() >= _pages.length - 1;
     _nextPage(provider);
     if (wasLastPage && (!provider.hasNext || !_autoNext)) {
       _stopAutoPageMode();
