@@ -60,6 +60,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: Column(
                   children: [
                     ListTile(
+                      leading: const Icon(Icons.tune),
+                      title: const Text('常规设置'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () =>
+                          Navigator.pushNamed(context, '/settings/general'),
+                    ),
+                    ListTile(
                       leading: const Icon(Icons.source),
                       title: const Text('书源管理'),
                       trailing: const Icon(Icons.chevron_right),

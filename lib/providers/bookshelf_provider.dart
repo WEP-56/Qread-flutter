@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/book.dart';
 import '../models/book_group.dart';
 import '../services/api_service.dart';
+import '../services/local_cache_service.dart';
 
 class BookshelfProvider extends ChangeNotifier {
   List<Book> _books = [];
@@ -53,6 +54,9 @@ class BookshelfProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  String _cacheScope(String accessToken) =>
+      LocalCacheService.instance.scopedKey('${accessToken}_bookshelf');
+
   Future<void> loadBookshelf(String accessToken, {bool refresh = false}) async {
     if (refresh) {
       _currentPage = 1;
@@ -68,9 +72,12 @@ class BookshelfProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      await _loadLocalCache(accessToken);
+
       // Step 1: Get page info (md5 + total pages)
       if (_md5 == null) {
-        final pageData = await ApiService.instance.getBookshelfPage(accessToken);
+        final pageData =
+            await ApiService.instance.getBookshelfPage(accessToken);
         final data = pageData['data'] ?? pageData;
         _md5 = data['md5']?.toString();
         _totalPages = int.tryParse(data['page']?.toString() ?? '1') ?? 1;
@@ -106,6 +113,7 @@ class BookshelfProvider extends ChangeNotifier {
       }
       _hasMore = _currentPage < _totalPages;
       _currentPage++;
+      await _saveLocalCache(accessToken);
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -114,13 +122,48 @@ class BookshelfProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _loadLocalCache(String accessToken) async {
+    final cache = LocalCacheService.instance;
+    final scope = _cacheScope(accessToken);
+    final booksJson = await cache.readJsonList('bookshelf_books_$scope');
+    final groupsJson = await cache.readJsonList('bookshelf_groups_$scope');
+    if (booksJson != null && _books.isEmpty) {
+      _books = booksJson
+          .whereType<Map>()
+          .map((e) => Book.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      notifyListeners();
+    }
+    if (groupsJson != null && _groups.isEmpty) {
+      _groups = groupsJson
+          .whereType<Map>()
+          .map((e) => BookGroup.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+      notifyListeners();
+    }
+  }
+
+  Future<void> _saveLocalCache(String accessToken) async {
+    final cache = LocalCacheService.instance;
+    final scope = _cacheScope(accessToken);
+    await cache.saveJson(
+      'bookshelf_books_$scope',
+      _books.map((book) => book.toJson()).toList(),
+    );
+    await cache.saveJson(
+      'bookshelf_groups_$scope',
+      _groups.map((group) => group.toJson()).toList(),
+    );
+  }
+
   Future<void> loadGroups(String accessToken) async {
     try {
       // 先获取 md5，再用 getgroupNew
       if (_md5 != null) {
         _groups = await ApiService.instance.getgroupNew(accessToken, _md5!);
       } else {
-        final pageData = await ApiService.instance.getBookshelfPage(accessToken);
+        final pageData =
+            await ApiService.instance.getBookshelfPage(accessToken);
         final data = pageData['data'] ?? pageData;
         final md5 = data['md5']?.toString();
         if (md5 != null) {
@@ -172,9 +215,11 @@ class BookshelfProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> renameGroup(String accessToken, String oldname, String newname) async {
+  Future<bool> renameGroup(
+      String accessToken, String oldname, String newname) async {
     try {
-      final result = await ApiService.instance.editgroup(accessToken, oldname, newname);
+      final result =
+          await ApiService.instance.editgroup(accessToken, oldname, newname);
       if (result['isSuccess'] == true) {
         await loadGroups(accessToken);
         return true;
@@ -189,7 +234,8 @@ class BookshelfProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> setBookGroup(String accessToken, String groupName, String bookUrl) async {
+  Future<bool> setBookGroup(
+      String accessToken, String groupName, String bookUrl) async {
     try {
       final result = await ApiService.instance.setgroup(
         accessToken,

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../config/constants.dart';
 import '../../models/book.dart';
 import '../../models/bookmark.dart';
+import '../../models/chapter.dart';
 import '../../providers/reader_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../services/api_service.dart';
@@ -29,7 +30,7 @@ class _ReaderPageState extends State<ReaderPage> {
   static const _keyPageMode = 'reader_page_mode';
   static const _keyAutoPageInterval = 'reader_auto_page_interval';
 
-  final PageController _pageController = PageController();
+  late PageController _pageController;
   final ScrollController _comicScrollController = ScrollController();
   final ScrollController _novelScrollController = ScrollController();
   final TtsService _tts = TtsService();
@@ -52,16 +53,24 @@ class _ReaderPageState extends State<ReaderPage> {
   String _pageMode = 'paged';
   String? _token;
   String? _bookUrl;
+  String _displayedContent = '';
+  bool _loadingDisplayedChapter = false;
+  bool _initialChapterOpened = false;
+  int _chapterRequestSerial = 0;
 
   double _fontSize = 18.0;
   double _lineHeight = 1.8;
   double _autoPageInterval = 12.0;
 
   int _currentPage = 0;
+  int _chapterPosition = 0;
   int _ttsParagraphIndex = -1;
   int? _ttsSleepMinutes;
   int? _batteryLevel;
   double? _chapterSliderValue;
+  int? _pendingChapterPosition;
+  bool _pendingOpenChapterAtEnd = false;
+  int _laidOutChapterIndex = -1;
 
   DateTime _now = DateTime.now();
 
@@ -71,6 +80,7 @@ class _ReaderPageState extends State<ReaderPage> {
   List<_ReaderPageSlice> _pages = [];
   Map<int, int> _paragraphPageLookup = {};
   List<GlobalKey> _paragraphKeys = [];
+  final Map<String, _ReaderChapterLayout> _chapterLayoutCache = {};
 
   String _lastContent = '';
   double _lastFontSize = 0;
@@ -78,10 +88,12 @@ class _ReaderPageState extends State<ReaderPage> {
   double _lastWidth = 0;
   double _lastHeight = 0;
   String _lastPageMode = '';
+  Size? _pagedViewportSize;
 
   @override
   void initState() {
     super.initState();
+    _pageController = PageController();
     _loadSettings();
     _comicScrollController.addListener(_onComicScroll);
     _tts.addListener(_onTtsStateChanged);
@@ -102,7 +114,14 @@ class _ReaderPageState extends State<ReaderPage> {
     _tts.removeListener(_onTtsStateChanged);
     _tts.stop();
     if (_token != null) {
-      context.read<ReaderProvider>().saveProgress(_token!, pos: _getProgress());
+      final provider = context.read<ReaderProvider>();
+      final chapter = _displayedChapter(provider);
+      context.read<ReaderProvider>().saveProgress(
+            _token!,
+            chapterIndex: _displayedChapterIndex(provider),
+            chapterTitle: chapter?.title,
+            pos: _getProgress(),
+          );
     }
     super.dispose();
   }
@@ -167,7 +186,7 @@ class _ReaderPageState extends State<ReaderPage> {
     provider.setBook(book);
     provider.addListener(_onProviderChanged);
     if (_token != null) {
-      provider.loadChapters(_token!);
+      provider.loadChapters(_token!, loadInitialContent: false);
       _loadBookmarks();
     }
   }
@@ -192,20 +211,20 @@ class _ReaderPageState extends State<ReaderPage> {
   void _onProviderChanged() {
     if (!mounted) return;
     final provider = context.read<ReaderProvider>();
-    if (provider.loadingContent || provider.content.isEmpty || _token == null) {
-      return;
-    }
-
-    _buildPages(provider);
-    _prefetchNextChapter(_token!);
-
-    if (_continueTtsOnNextChapter) {
-      _continueTtsOnNextChapter = false;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_ttsReading) return;
-        _prepareTtsParagraphs(provider.content);
-        _speakParagraphAt(0);
-      });
+    if (_token != null &&
+        !_initialChapterOpened &&
+        !provider.loadingChapters &&
+        provider.chapters.isNotEmpty) {
+      _initialChapterOpened = true;
+      final initialIndex = (provider.book?.durChapterIndex ?? 0)
+          .clamp(0, provider.chapters.length - 1);
+      final initialPos = provider.book?.durChapterPos ?? 0;
+      final openAtEnd = initialPos > 1 << 29;
+      _openChapter(
+        initialIndex,
+        chapterPosition: initialPos > 1 ? initialPos.round() : 0,
+        openAtEnd: openAtEnd,
+      );
     }
   }
 
@@ -220,7 +239,9 @@ class _ReaderPageState extends State<ReaderPage> {
     if (maxExtent <= 0) return;
     if (_comicScrollController.position.pixels >= maxExtent - 100) {
       final provider = context.read<ReaderProvider>();
-      if (provider.hasNext && !provider.loadingContent && _token != null) {
+      if (_hasNextChapter(provider) &&
+          !_loadingDisplayedChapter &&
+          _token != null) {
         _goToNextChapter();
       }
     }
@@ -239,8 +260,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (max <= 0) return 0.0;
       return (_novelScrollController.offset / max).clamp(0.0, 1.0);
     }
-    if (_pages.isEmpty) return 0.0;
-    return (_activePageIndex() / _pages.length).clamp(0.0, 1.0);
+    return _chapterPosition.toDouble();
   }
 
   int _activePageIndex() {
@@ -254,21 +274,131 @@ class _ReaderPageState extends State<ReaderPage> {
     return _currentPage.clamp(0, _pages.length - 1);
   }
 
+  int _displayedChapterIndex(ReaderProvider provider) {
+    if (_laidOutChapterIndex >= 0) return _laidOutChapterIndex;
+    return provider.book?.durChapterIndex ?? 0;
+  }
+
+  Chapter? _displayedChapter(ReaderProvider provider) {
+    final index = _displayedChapterIndex(provider);
+    if (index < 0 || index >= provider.chapters.length) return null;
+    return provider.chapters[index];
+  }
+
+  bool _hasPreviousChapter(ReaderProvider provider) {
+    return _displayedChapterIndex(provider) > 0;
+  }
+
+  bool _hasNextChapter(ReaderProvider provider) {
+    return _displayedChapterIndex(provider) < provider.chapters.length - 1;
+  }
+
+  int _resolveTargetChapterPosition(ReaderProvider provider) {
+    if (_pendingOpenChapterAtEnd) {
+      return 1 << 30;
+    }
+    if (_pendingChapterPosition != null) {
+      return _pendingChapterPosition!;
+    }
+    if (_laidOutChapterIndex == _displayedChapterIndex(provider)) {
+      return _chapterPosition;
+    }
+    final savedChapterIndex =
+        provider.book?.durChapterIndex ?? _displayedChapterIndex(provider);
+    if (savedChapterIndex == _displayedChapterIndex(provider)) {
+      final savedPos = provider.book?.durChapterPos ?? 0;
+      if (savedPos > 1) {
+        return savedPos;
+      }
+    }
+    return 0;
+  }
+
+  void _consumePendingChapterPosition() {
+    _pendingChapterPosition = null;
+    _pendingOpenChapterAtEnd = false;
+  }
+
   Future<void> _saveProgress({double? pos}) async {
     if (_token == null) return;
-    await context
-        .read<ReaderProvider>()
-        .saveProgress(_token!, pos: pos ?? _getProgress());
+    final provider = context.read<ReaderProvider>();
+    final chapter = _displayedChapter(provider);
+    await provider.saveProgress(
+      _token!,
+      chapterIndex: _displayedChapterIndex(provider),
+      chapterTitle: chapter?.title,
+      pos: pos ?? _getProgress(),
+    );
   }
 
   Future<void> _prefetchNextChapter(String token) async {
-    final provider = context.read<ReaderProvider>();
-    if (!provider.hasNext) return;
-    final nextIndex = provider.currentChapterIndex + 1;
-    if (nextIndex >= provider.chapters.length) return;
     try {
-      await provider.loadContent(token, nextIndex, silent: true);
+      await context.read<ReaderProvider>().prefetchAround(
+          token, _displayedChapterIndex(context.read<ReaderProvider>()));
     } catch (_) {}
+  }
+
+  Future<void> _openChapter(
+    int chapterIndex, {
+    int chapterPosition = 0,
+    bool openAtEnd = false,
+  }) async {
+    final token = _token;
+    if (token == null) return;
+    final provider = context.read<ReaderProvider>();
+    if (chapterIndex < 0 || chapterIndex >= provider.chapters.length) return;
+
+    final requestSerial = ++_chapterRequestSerial;
+    _pendingChapterPosition = openAtEnd ? null : chapterPosition;
+    _pendingOpenChapterAtEnd = openAtEnd;
+
+    _ReaderChapterLayout? cachedLayout;
+    for (final entry in _chapterLayoutCache.entries) {
+      if (entry.key.startsWith('$chapterIndex|')) {
+        cachedLayout = entry.value;
+        break;
+      }
+    }
+
+    if (cachedLayout == null) {
+      setState(() {
+        _loadingDisplayedChapter = true;
+      });
+    }
+
+    try {
+      final text = await provider.getChapterContent(token, chapterIndex);
+      if (!mounted || requestSerial != _chapterRequestSerial) return;
+
+      setState(() {
+        _loadingDisplayedChapter = false;
+        _displayedContent = text;
+        _laidOutChapterIndex = chapterIndex;
+      });
+
+      provider.book?.durChapterIndex = chapterIndex;
+      provider.book?.durChapterTitle = provider.chapters[chapterIndex].title;
+
+      _buildPages(provider);
+      await _prefetchNextChapter(token);
+
+      if (_continueTtsOnNextChapter) {
+        _continueTtsOnNextChapter = false;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_ttsReading) return;
+          _prepareTtsParagraphs(_displayedContent);
+          _speakParagraphAt(0);
+        });
+      }
+    } catch (e) {
+      if (!mounted || requestSerial != _chapterRequestSerial) return;
+      setState(() {
+        _loadingDisplayedChapter = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('加载章节失败: $e')),
+      );
+    }
   }
 
   void _toggleController() {
@@ -335,12 +465,12 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _buildPages(ReaderProvider provider) {
-    final content = provider.content;
-    final plainParagraphs = _extractParagraphs(content);
-    _paragraphs = [
-      for (var i = 0; i < plainParagraphs.length; i++)
-        _ReaderParagraph(index: i, text: plainParagraphs[i]),
-    ];
+    final content = _displayedContent;
+    _paragraphs = _extractParagraphs(
+      content,
+      chapterTitle:
+          _displayedChapter(provider)?.title ?? provider.book?.durChapterTitle,
+    );
     _paragraphKeys = List.generate(_paragraphs.length, (_) => GlobalKey());
 
     if (_isComic || _isHtmlContent(content)) {
@@ -349,6 +479,8 @@ class _ReaderPageState extends State<ReaderPage> {
           _pages = [];
           _paragraphPageLookup = {};
           _currentPage = 0;
+          _chapterPosition = 0;
+          _laidOutChapterIndex = _displayedChapterIndex(provider);
         });
       }
       return;
@@ -360,12 +492,39 @@ class _ReaderPageState extends State<ReaderPage> {
           _pages = [];
           _paragraphPageLookup = {};
           _currentPage = 0;
+          _chapterPosition = 0;
+          _laidOutChapterIndex = _displayedChapterIndex(provider);
         });
       }
       return;
     }
 
-    final size = MediaQuery.of(context).size;
+    final targetPosition = _resolveTargetChapterPosition(provider);
+
+    final size = _pagedViewportSize ?? MediaQuery.of(context).size;
+    final layoutKey =
+        '${_displayedChapterIndex(provider)}|${content.hashCode}|${_fontSize.toStringAsFixed(2)}|${_lineHeight.toStringAsFixed(2)}|${size.width.toStringAsFixed(1)}|${size.height.toStringAsFixed(1)}|$_pageMode';
+    final cachedLayout = _chapterLayoutCache[layoutKey];
+    if (cachedLayout != null) {
+      final targetPage =
+          _pageIndexForPosition(cachedLayout.pages, targetPosition);
+      final normalizedPosition = cachedLayout.pages.isEmpty
+          ? 0
+          : cachedLayout.pages[targetPage].startPosition;
+      _paragraphs = cachedLayout.paragraphs;
+      _paragraphKeys = List.generate(_paragraphs.length, (_) => GlobalKey());
+      _recreatePageController(targetPage);
+      setState(() {
+        _pages = cachedLayout.pages;
+        _paragraphPageLookup = cachedLayout.paragraphPageLookup;
+        _currentPage = targetPage;
+        _chapterPosition = normalizedPosition;
+        _laidOutChapterIndex = _displayedChapterIndex(provider);
+      });
+      _consumePendingChapterPosition();
+      return;
+    }
+
     if (content == _lastContent &&
         _fontSize == _lastFontSize &&
         _lineHeight == _lastLineHeight &&
@@ -373,6 +532,7 @@ class _ReaderPageState extends State<ReaderPage> {
         size.height == _lastHeight &&
         _lastPageMode == _pageMode &&
         _pages.isNotEmpty) {
+      _syncPagedPosition(targetPosition);
       return;
     }
 
@@ -383,8 +543,11 @@ class _ReaderPageState extends State<ReaderPage> {
     _lastHeight = size.height;
     _lastPageMode = _pageMode;
 
-    final safeTop = MediaQuery.of(context).padding.top;
-    final safeBottom = MediaQuery.of(context).padding.bottom;
+    final safeTop =
+        _pagedViewportSize == null ? MediaQuery.of(context).padding.top : 0.0;
+    final safeBottom = _pagedViewportSize == null
+        ? MediaQuery.of(context).padding.bottom
+        : 0.0;
     const horizontalPadding = 24.0;
     const topPadding = 18.0;
     const chapterHeaderHeight = 30.0;
@@ -399,75 +562,297 @@ class _ReaderPageState extends State<ReaderPage> {
         footerHeight -
         verticalPadding;
 
-    final previousRatio =
-        _pages.isEmpty ? 0.0 : (_currentPage / _pages.length).clamp(0.0, 1.0);
     final newPages = <_ReaderPageSlice>[];
     final lookup = <int, int>{};
-    var currentParagraphs = <_ReaderParagraph>[];
+    var currentBlocks = <_ReaderPageBlock>[];
     var currentHeight = 0.0;
 
-    for (final paragraph in _paragraphs) {
-      final text = '　　${paragraph.text}';
-      final paragraphHeight = _measureText(
-            text,
-            fontSize: _fontSize,
-            lineHeight: _lineHeight,
-            maxWidth: availableWidth,
-          ) +
-          10;
-
-      if (currentParagraphs.isNotEmpty &&
-          currentHeight + paragraphHeight > availableHeight) {
-        final pageIndex = newPages.length;
-        newPages.add(_ReaderPageSlice(paragraphs: currentParagraphs));
-        for (final item in currentParagraphs) {
-          lookup[item.index] = pageIndex;
-        }
-        currentParagraphs = [paragraph];
-        currentHeight = paragraphHeight;
-      } else {
-        currentParagraphs.add(paragraph);
-        currentHeight += paragraphHeight;
-      }
-    }
-
-    if (currentParagraphs.isNotEmpty) {
+    void commitPage() {
+      if (currentBlocks.isEmpty) return;
       final pageIndex = newPages.length;
-      newPages.add(_ReaderPageSlice(paragraphs: currentParagraphs));
-      for (final item in currentParagraphs) {
-        lookup[item.index] = pageIndex;
+      newPages.add(
+        _ReaderPageSlice(
+          blocks: currentBlocks,
+          startPosition: _pageStartPosition(currentBlocks),
+          endPosition: _pageEndPosition(currentBlocks),
+        ),
+      );
+      for (final block in currentBlocks) {
+        lookup.putIfAbsent(block.paragraphIndex, () => pageIndex);
+      }
+      currentBlocks = <_ReaderPageBlock>[];
+      currentHeight = 0.0;
+    }
+
+    for (final paragraph in _paragraphs) {
+      var remainingText = paragraph.text;
+      var remainingStart = paragraph.startPosition;
+      var continuation = false;
+
+      while (remainingText.isNotEmpty) {
+        if (currentBlocks.isNotEmpty && currentHeight >= availableHeight - 2) {
+          commitPage();
+        }
+
+        final availableForBlock = availableHeight - currentHeight;
+        final fullHeight = _measureRenderBlockHeight(
+          remainingText,
+          isTitle: paragraph.isTitle,
+          isContinuation: continuation,
+          maxWidth: availableWidth,
+        );
+
+        if (fullHeight <= availableForBlock || currentBlocks.isEmpty) {
+          if (fullHeight <= availableForBlock) {
+            final end = remainingStart + remainingText.length;
+            currentBlocks.add(
+              _ReaderPageBlock(
+                paragraphIndex: paragraph.index,
+                text: remainingText,
+                startPosition: remainingStart,
+                endPosition: end,
+                isTitle: paragraph.isTitle,
+                isContinuation: continuation,
+              ),
+            );
+            currentHeight += fullHeight;
+            break;
+          }
+
+          final splitIndex = _findSplitIndexForHeight(
+            remainingText,
+            maxHeight: availableForBlock,
+            maxWidth: availableWidth,
+            isTitle: paragraph.isTitle,
+            isContinuation: continuation,
+          );
+
+          if (splitIndex <= 0) {
+            if (currentBlocks.isNotEmpty) {
+              commitPage();
+              continue;
+            }
+            final end = remainingStart + remainingText.length;
+            currentBlocks.add(
+              _ReaderPageBlock(
+                paragraphIndex: paragraph.index,
+                text: remainingText,
+                startPosition: remainingStart,
+                endPosition: end,
+                isTitle: paragraph.isTitle,
+                isContinuation: continuation,
+              ),
+            );
+            currentHeight += fullHeight;
+            break;
+          }
+
+          final sliceText = remainingText.substring(0, splitIndex);
+          final sliceEnd = remainingStart + sliceText.length;
+          currentBlocks.add(
+            _ReaderPageBlock(
+              paragraphIndex: paragraph.index,
+              text: sliceText,
+              startPosition: remainingStart,
+              endPosition: sliceEnd,
+              isTitle: paragraph.isTitle,
+              isContinuation: continuation,
+            ),
+          );
+          currentHeight += _measureRenderBlockHeight(
+            sliceText,
+            isTitle: paragraph.isTitle,
+            isContinuation: continuation,
+            maxWidth: availableWidth,
+          );
+          remainingText = remainingText.substring(splitIndex);
+          remainingStart = sliceEnd;
+          continuation = true;
+          commitPage();
+          continue;
+        } else {
+          commitPage();
+        }
       }
     }
 
-    final targetPage = newPages.isEmpty
+    commitPage();
+
+    final targetPage = _pageIndexForPosition(newPages, targetPosition);
+    final normalizedPosition = newPages.isEmpty
         ? 0
-        : (previousRatio * newPages.length)
-            .round()
-            .clamp(0, newPages.length - 1);
+        : newPages[targetPage.clamp(0, newPages.length - 1)].startPosition;
 
     setState(() {
       _pages = newPages;
       _paragraphPageLookup = lookup;
       _currentPage = targetPage;
+      _chapterPosition = normalizedPosition;
+      _laidOutChapterIndex = _displayedChapterIndex(provider);
     });
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_pageController.hasClients || _pages.isEmpty) return;
-      _pageController.jumpToPage(_currentPage.clamp(0, _pages.length - 1));
-    });
+    _chapterLayoutCache[layoutKey] = _ReaderChapterLayout(
+      paragraphs: _paragraphs,
+      pages: newPages,
+      paragraphPageLookup: lookup,
+    );
+    _recreatePageController(targetPage);
+    _consumePendingChapterPosition();
   }
 
-  List<String> _extractParagraphs(String content) {
+  void _syncPagedPosition(int targetPosition) {
+    if (_pages.isEmpty) return;
+    final targetPage = _pageIndexForPosition(_pages, targetPosition);
+    final normalizedPosition = _pages[targetPage].startPosition;
+    _recreatePageController(targetPage);
+    setState(() {
+      _currentPage = targetPage;
+      _chapterPosition = normalizedPosition;
+      _laidOutChapterIndex =
+          _displayedChapterIndex(context.read<ReaderProvider>());
+    });
+    _consumePendingChapterPosition();
+  }
+
+  int _pageIndexForPosition(List<_ReaderPageSlice> pages, int targetPosition) {
+    if (pages.isEmpty) return 0;
+    if (targetPosition >= (1 << 29)) {
+      return pages.length - 1;
+    }
+    for (var i = 0; i < pages.length; i++) {
+      if (targetPosition <= pages[i].endPosition) {
+        return i;
+      }
+    }
+    return pages.length - 1;
+  }
+
+  void _recreatePageController(int initialPage) {
+    _pageController.dispose();
+    _pageController = PageController(initialPage: initialPage);
+  }
+
+  int _pageStartPosition(List<_ReaderPageBlock> blocks) {
+    for (final block in blocks) {
+      if (!block.isTitle) {
+        return block.startPosition;
+      }
+    }
+    return 0;
+  }
+
+  int _pageEndPosition(List<_ReaderPageBlock> blocks) {
+    for (var i = blocks.length - 1; i >= 0; i--) {
+      if (!blocks[i].isTitle) {
+        return blocks[i].endPosition;
+      }
+    }
+    return 0;
+  }
+
+  double _measureRenderBlockHeight(
+    String text, {
+    required bool isTitle,
+    required bool isContinuation,
+    required double maxWidth,
+  }) {
+    final displayText = isTitle ? text : '${isContinuation ? '' : '　　'}$text';
+    return _measureText(
+          displayText,
+          fontSize: isTitle ? _fontSize + 4 : _fontSize,
+          lineHeight: isTitle ? 1.45 : _lineHeight,
+          fontWeight: isTitle ? FontWeight.w600 : FontWeight.normal,
+          maxWidth: maxWidth,
+        ) +
+        10;
+  }
+
+  int _findSplitIndexForHeight(
+    String text, {
+    required double maxHeight,
+    required double maxWidth,
+    required bool isTitle,
+    required bool isContinuation,
+  }) {
+    if (text.isEmpty || maxHeight <= 0) return 0;
+    var low = 1;
+    var high = text.length;
+    var best = 0;
+    while (low <= high) {
+      final mid = (low + high) ~/ 2;
+      final candidate = text.substring(0, mid);
+      final height = _measureRenderBlockHeight(
+        candidate,
+        isTitle: isTitle,
+        isContinuation: isContinuation,
+        maxWidth: maxWidth,
+      );
+      if (height <= maxHeight) {
+        best = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+    if (best <= 0) return 0;
+    return _adjustSplitIndex(text, best);
+  }
+
+  int _adjustSplitIndex(String text, int splitIndex) {
+    const preferredBreakChars = '，。！？；：、）》】」 ”';
+    var candidate = splitIndex;
+    final minCandidate = (splitIndex - 24).clamp(1, splitIndex);
+    for (var i = splitIndex; i >= minCandidate; i--) {
+      final char = text[i - 1];
+      if (preferredBreakChars.contains(char)) {
+        candidate = i;
+        break;
+      }
+    }
+    return candidate;
+  }
+
+  List<_ReaderParagraph> _extractParagraphs(
+    String content, {
+    String? chapterTitle,
+  }) {
     final plain = content
         .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
         .replaceAll(RegExp(r'</p\s*>', caseSensitive: false), '\n')
         .replaceAll(RegExp(r'<[^>]*>'), ' ')
         .replaceAll('\r', '');
-    return plain
+    final lines = plain
         .split(RegExp(r'\n+'))
         .map((line) => line.replaceAll(RegExp(r'\s+'), ' ').trim())
         .where((line) => line.isNotEmpty)
         .toList();
+    final paragraphs = <_ReaderParagraph>[];
+    final cleanTitle = (chapterTitle ?? '').trim();
+    if (cleanTitle.isNotEmpty) {
+      paragraphs.add(
+        _ReaderParagraph(
+          index: 0,
+          text: cleanTitle,
+          startPosition: 0,
+          endPosition: 0,
+          isTitle: true,
+        ),
+      );
+    }
+    var start = 0;
+    for (var i = 0; i < lines.length; i++) {
+      final text = lines[i];
+      final end = start + text.length;
+      paragraphs.add(
+        _ReaderParagraph(
+          index: i + (cleanTitle.isNotEmpty ? 1 : 0),
+          text: text,
+          startPosition: start,
+          endPosition: end,
+        ),
+      );
+      start = end + 1;
+    }
+    return paragraphs;
   }
 
   double _measureText(
@@ -573,10 +958,18 @@ class _ReaderPageState extends State<ReaderPage> {
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
-      setState(() => _currentPage = currentPage - 1);
-    } else if (provider.hasPrevious) {
-      _saveProgress(pos: 0.0);
-      if (_token != null) provider.previousChapter(_token!);
+      final previousPage = _pages[currentPage - 1];
+      setState(() {
+        _currentPage = currentPage - 1;
+        _chapterPosition = previousPage.startPosition;
+      });
+    } else {
+      final chapterIndex = _displayedChapterIndex(provider);
+      if (chapterIndex <= 0) return;
+      _saveProgress(pos: _chapterPosition.toDouble());
+      _pendingChapterPosition = null;
+      _pendingOpenChapterAtEnd = true;
+      _openChapter(chapterIndex - 1, openAtEnd: true);
     }
   }
 
@@ -588,10 +981,28 @@ class _ReaderPageState extends State<ReaderPage> {
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
-      setState(() => _currentPage = currentPage + 1);
-    } else if (_autoNext && provider.hasNext) {
-      _saveProgress(pos: 1.0);
-      if (_token != null) provider.nextChapter(_token!);
+      final nextPage = _pages[currentPage + 1];
+      setState(() {
+        _currentPage = currentPage + 1;
+        _chapterPosition = nextPage.startPosition;
+      });
+    } else if (_autoNext) {
+      final chapterIndex = _displayedChapterIndex(provider);
+      if (chapterIndex >= provider.chapters.length - 1) {
+        setState(() => _showController = true);
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('已到本章末页'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        return;
+      }
+      _saveProgress(pos: _chapterPosition.toDouble());
+      _pendingChapterPosition = 0;
+      _pendingOpenChapterAtEnd = false;
+      _openChapter(chapterIndex + 1, chapterPosition: 0);
     } else {
       setState(() => _showController = true);
       ScaffoldMessenger.of(context).clearSnackBars();
@@ -627,13 +1038,19 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _goToPreviousChapter() {
+    final provider = context.read<ReaderProvider>();
+    final chapterIndex = _displayedChapterIndex(provider);
+    if (chapterIndex <= 0) return;
     _saveProgress(pos: _getProgress());
-    if (_token != null) context.read<ReaderProvider>().previousChapter(_token!);
+    _openChapter(chapterIndex - 1, openAtEnd: true);
   }
 
   void _goToNextChapter() {
+    final provider = context.read<ReaderProvider>();
+    final chapterIndex = _displayedChapterIndex(provider);
+    if (chapterIndex >= provider.chapters.length - 1) return;
     _saveProgress(pos: _getProgress());
-    if (_token != null) context.read<ReaderProvider>().nextChapter(_token!);
+    _openChapter(chapterIndex + 1, chapterPosition: 0);
   }
 
   Widget _buildContent(ReaderProvider provider) {
@@ -671,9 +1088,9 @@ class _ReaderPageState extends State<ReaderPage> {
     }
 
     return SafeArea(
-      child: provider.loadingContent && provider.content.isEmpty
+      child: _loadingDisplayedChapter && _displayedContent.isEmpty
           ? const Center(child: CircularProgressIndicator())
-          : provider.error != null && provider.content.isEmpty
+          : provider.error != null && _displayedContent.isEmpty
               ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -692,7 +1109,7 @@ class _ReaderPageState extends State<ReaderPage> {
                     ],
                   ),
                 )
-              : _isComic || _isHtmlContent(provider.content)
+              : _isComic || _isHtmlContent(_displayedContent)
                   ? _buildComicContent(provider)
                   : _pageMode == 'scroll'
                       ? _buildScrollNovelContent(provider)
@@ -737,7 +1154,7 @@ class _ReaderPageState extends State<ReaderPage> {
               if (!isComic) _buildChapterHeader(provider),
               if (!isComic) const SizedBox(height: 12),
               Html(
-                data: _proxyImages(provider.content),
+                data: _proxyImages(_displayedContent),
                 style: {
                   'body': Style(
                     margin: Margins.zero,
@@ -765,7 +1182,8 @@ class _ReaderPageState extends State<ReaderPage> {
 
   Widget _buildAudioPlaceholder(ReaderProvider provider) {
     final textColor = _textColor();
-    final hasContent = provider.content.isNotEmpty;
+    final hasContent = _displayedContent.isNotEmpty;
+    final displayedChapter = _displayedChapter(provider);
 
     return Center(
       child: Column(
@@ -787,9 +1205,7 @@ class _ReaderPageState extends State<ReaderPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            _ttsReading
-                ? (provider.currentChapter?.title ?? '朗读中...')
-                : '点击下方按钮开始朗读',
+            _ttsReading ? (displayedChapter?.title ?? '朗读中...') : '点击下方按钮开始朗读',
             style: TextStyle(color: _secondaryTextColor(), fontSize: 14),
             textAlign: TextAlign.center,
           ),
@@ -894,46 +1310,70 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Widget _buildNovelContent(ReaderProvider provider) {
-    if (_pages.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = Size(constraints.maxWidth, constraints.maxHeight);
+        if (_pagedViewportSize == null ||
+            (_pagedViewportSize!.width - size.width).abs() > 1 ||
+            (_pagedViewportSize!.height - size.height).abs() > 1) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            setState(() {
+              _pagedViewportSize = size;
+            });
+            _buildPages(provider);
+          });
+        }
 
-    return PageView.builder(
-      controller: _pageController,
-      itemCount: _pages.length,
-      onPageChanged: (page) => setState(() => _currentPage = page),
-      itemBuilder: (context, index) {
-        final page = _pages[index];
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildChapterHeader(provider),
-              const SizedBox(height: 14),
-              Expanded(
-                child: SingleChildScrollView(
-                  physics: const NeverScrollableScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final paragraph in page.paragraphs)
-                        _buildParagraph(paragraph),
-                    ],
+        if (_pages.isEmpty) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        return PageView.builder(
+          controller: _pageController,
+          itemCount: _pages.length,
+          onPageChanged: (page) {
+            final position = _pages.isEmpty ? 0 : _pages[page].startPosition;
+            setState(() {
+              _currentPage = page;
+              _chapterPosition = position;
+            });
+          },
+          itemBuilder: (context, index) {
+            final page = _pages[index];
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(24, 18, 24, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildChapterHeader(provider),
+                  const SizedBox(height: 14),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const NeverScrollableScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (final block in page.blocks)
+                            _buildPageBlock(block),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
+                  _buildReadingFooter(provider),
+                ],
               ),
-              _buildReadingFooter(provider),
-            ],
-          ),
+            );
+          },
         );
       },
     );
   }
 
   Widget _buildChapterHeader(ReaderProvider provider) {
+    final displayedChapter = _displayedChapter(provider);
     return Text(
-      provider.currentChapter?.title ?? provider.book?.durChapterTitle ?? '',
+      displayedChapter?.title ?? provider.book?.durChapterTitle ?? '',
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
@@ -944,7 +1384,29 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Widget _buildParagraph(_ReaderParagraph paragraph) {
-    final highlighted = paragraph.index == _ttsParagraphIndex;
+    return _buildTextBlock(
+      text: paragraph.text,
+      highlighted: paragraph.index == _ttsParagraphIndex,
+      isTitle: paragraph.isTitle,
+      isContinuation: false,
+    );
+  }
+
+  Widget _buildPageBlock(_ReaderPageBlock block) {
+    return _buildTextBlock(
+      text: block.text,
+      highlighted: block.paragraphIndex == _ttsParagraphIndex,
+      isTitle: block.isTitle,
+      isContinuation: block.isContinuation,
+    );
+  }
+
+  Widget _buildTextBlock({
+    required String text,
+    required bool highlighted,
+    required bool isTitle,
+    required bool isContinuation,
+  }) {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       margin: const EdgeInsets.only(bottom: 10),
@@ -954,11 +1416,12 @@ class _ReaderPageState extends State<ReaderPage> {
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
-        '　　${paragraph.text}',
+        isTitle ? text : '${isContinuation ? '' : '　　'}$text',
         style: TextStyle(
-          fontSize: _fontSize,
+          fontSize: isTitle ? _fontSize + 4 : _fontSize,
           color: _textColor(),
-          height: _lineHeight,
+          height: isTitle ? 1.45 : _lineHeight,
+          fontWeight: isTitle ? FontWeight.w600 : FontWeight.normal,
         ),
       ),
     );
@@ -1082,6 +1545,7 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Widget _buildNormalController(ReaderProvider provider) {
+    final displayedChapterIndex = _displayedChapterIndex(provider);
     return Container(
       key: const ValueKey('normal-controller'),
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -1122,7 +1586,8 @@ class _ReaderPageState extends State<ReaderPage> {
           Row(
             children: [
               TextButton(
-                onPressed: provider.hasPrevious ? _goToPreviousChapter : null,
+                onPressed:
+                    _hasPreviousChapter(provider) ? _goToPreviousChapter : null,
                 child: const Text('上一章'),
               ),
               Expanded(
@@ -1136,7 +1601,7 @@ class _ReaderPageState extends State<ReaderPage> {
                     value: provider.chapters.isEmpty
                         ? 0
                         : (_chapterSliderValue ??
-                                provider.currentChapterIndex.toDouble())
+                                displayedChapterIndex.toDouble())
                             .clamp(
                                 0, (provider.chapters.length - 1).toDouble()),
                     min: 0,
@@ -1155,17 +1620,17 @@ class _ReaderPageState extends State<ReaderPage> {
                         : (value) {
                             setState(() => _chapterSliderValue = null);
                             final target = value.round();
-                            if (target != provider.currentChapterIndex &&
+                            if (target != displayedChapterIndex &&
                                 _token != null) {
                               _saveProgress(pos: _getProgress());
-                              provider.goToChapter(_token!, target);
+                              _openChapter(target, chapterPosition: 0);
                             }
                           },
                   ),
                 ),
               ),
               TextButton(
-                onPressed: provider.hasNext ? _goToNextChapter : null,
+                onPressed: _hasNextChapter(provider) ? _goToNextChapter : null,
                 child: const Text('下一章'),
               ),
             ],
@@ -1292,6 +1757,7 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Widget _buildControllerInfo(ReaderProvider provider) {
+    final displayedChapter = _displayedChapter(provider);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1311,7 +1777,7 @@ class _ReaderPageState extends State<ReaderPage> {
               ),
               const SizedBox(height: 4),
               Text(
-                provider.currentChapter?.title ?? '',
+                displayedChapter?.title ?? '',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -1478,7 +1944,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (_comicScrollController.hasClients &&
           _comicScrollController.offset >=
               _comicScrollController.position.maxScrollExtent - 30) {
-        if (_autoNext && provider.hasNext) {
+        if (_autoNext && _hasNextChapter(provider)) {
           _goToNextChapter();
         } else {
           _stopAutoPageMode();
@@ -1495,7 +1961,7 @@ class _ReaderPageState extends State<ReaderPage> {
               MediaQuery.of(context).size.height * 0.75)
           .clamp(0.0, _novelScrollController.position.maxScrollExtent);
       if (target >= _novelScrollController.position.maxScrollExtent - 20) {
-        if (_autoNext && provider.hasNext) {
+        if (_autoNext && _hasNextChapter(provider)) {
           _goToNextChapter();
         } else {
           _stopAutoPageMode();
@@ -1512,7 +1978,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
     final wasLastPage = _activePageIndex() >= _pages.length - 1;
     _nextPage(provider);
-    if (wasLastPage && (!provider.hasNext || !_autoNext)) {
+    if (wasLastPage && (!_hasNextChapter(provider) || !_autoNext)) {
       _stopAutoPageMode();
     }
   }
@@ -1558,7 +2024,8 @@ class _ReaderPageState extends State<ReaderPage> {
         useReplaceRule: 1,
       );
       provider.book?.useReplaceRule = true;
-      await provider.goToChapter(token, provider.currentChapterIndex);
+      await _openChapter(_displayedChapterIndex(provider),
+          chapterPosition: _chapterPosition);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('已应用净化规则并刷新当前章节')),
@@ -1889,7 +2356,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   itemCount: provider.chapters.length,
                   itemBuilder: (context, index) {
                     final chapter = provider.chapters[index];
-                    final isCurrent = index == provider.currentChapterIndex;
+                    final isCurrent = index == _displayedChapterIndex(provider);
                     final isRead = provider.readChapters.contains(index);
                     final hasBookmark = _bookmarkChapterIndices.contains(index);
                     return ListTile(
@@ -1923,9 +2390,7 @@ class _ReaderPageState extends State<ReaderPage> {
                       onTap: () {
                         Navigator.pop(context);
                         _saveProgress(pos: _getProgress());
-                        if (_token != null) {
-                          provider.goToChapter(_token!, index);
-                        }
+                        _openChapter(index, chapterPosition: 0);
                       },
                     );
                   },
@@ -2005,8 +2470,7 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Future<void> _startTts() async {
-    final provider = context.read<ReaderProvider>();
-    final text = provider.content;
+    final text = _displayedContent;
     if (text.isEmpty) return;
 
     _stopAutoPageMode();
@@ -2024,11 +2488,7 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _prepareTtsParagraphs(String text) {
     if (_paragraphs.isNotEmpty) return;
-    final paragraphs = _extractParagraphs(text);
-    _paragraphs = [
-      for (var i = 0; i < paragraphs.length; i++)
-        _ReaderParagraph(index: i, text: paragraphs[i]),
-    ];
+    _paragraphs = _extractParagraphs(text);
     _paragraphKeys = List.generate(_paragraphs.length, (_) => GlobalKey());
   }
 
@@ -2046,10 +2506,10 @@ class _ReaderPageState extends State<ReaderPage> {
       }
 
       final provider = context.read<ReaderProvider>();
-      if (_autoNext && provider.hasNext && _token != null) {
+      if (_autoNext && _hasNextChapter(provider) && _token != null) {
         _continueTtsOnNextChapter = true;
         _saveProgress(pos: 1.0);
-        provider.nextChapter(_token!);
+        _openChapter(_displayedChapterIndex(provider) + 1, chapterPosition: 0);
       } else {
         _stopTts();
       }
@@ -2071,7 +2531,10 @@ class _ReaderPageState extends State<ReaderPage> {
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOut,
           );
-          setState(() => _currentPage = pageIndex);
+          setState(() {
+            _currentPage = pageIndex;
+            _chapterPosition = _pages[pageIndex].startPosition;
+          });
         }
         return;
       }
@@ -2121,20 +2584,25 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _retry() {
     if (_token != null) {
-      context.read<ReaderProvider>().loadChapters(_token!);
+      final provider = context.read<ReaderProvider>();
+      if (provider.chapters.isEmpty) {
+        provider.loadChapters(_token!, loadInitialContent: false);
+      } else {
+        _openChapter(_displayedChapterIndex(provider),
+            chapterPosition: _chapterPosition);
+      }
     }
   }
 
   bool _hasBookmarkAtCurrent(ReaderProvider provider) {
+    final currentIndex = _displayedChapterIndex(provider);
     return _bookmarks.any(
-      (mark) =>
-          mark.chapterIndex == provider.currentChapterIndex &&
-          mark.chapterPos != null,
+      (mark) => mark.chapterIndex == currentIndex && mark.chapterPos != null,
     );
   }
 
   Bookmark? _bookmarkAtCurrent(ReaderProvider provider) {
-    final idx = provider.currentChapterIndex;
+    final idx = _displayedChapterIndex(provider);
     for (final mark in _bookmarks) {
       if (mark.chapterIndex == idx && mark.chapterPos != null) return mark;
     }
@@ -2162,9 +2630,9 @@ class _ReaderPageState extends State<ReaderPage> {
     }
 
     try {
-      final chapterName = provider.currentChapter?.title ?? '';
-      final index = provider.currentChapterIndex;
-      final pos = _getProgress();
+      final chapterName = _displayedChapter(provider)?.title ?? '';
+      final index = _displayedChapterIndex(provider);
+      final pos = _chapterPosition.toDouble();
       await ApiService.instance.addBookmark(
         _token!,
         url: _bookUrl!,
@@ -2196,10 +2664,11 @@ class _ReaderPageState extends State<ReaderPage> {
   Future<void> _jumpToBookmark(Bookmark mark) async {
     if (_token == null) return;
     final provider = context.read<ReaderProvider>();
-    final targetChapter = mark.chapterIndex ?? provider.currentChapterIndex;
+    final targetChapter = mark.chapterIndex ?? _displayedChapterIndex(provider);
     Navigator.pop(context);
     _saveProgress(pos: _getProgress());
-    await provider.goToChapter(_token!, targetChapter);
+    await _openChapter(targetChapter,
+        chapterPosition: mark.chapterPos?.round() ?? 0);
   }
 
   void _showBookmarkList() {
@@ -2242,9 +2711,8 @@ class _ReaderPageState extends State<ReaderPage> {
                         itemBuilder: (context, index) {
                           final mark = _bookmarks[index];
                           final isCurrentChapter = mark.chapterIndex ==
-                              context
-                                  .read<ReaderProvider>()
-                                  .currentChapterIndex;
+                              _displayedChapterIndex(
+                                  context.read<ReaderProvider>());
                           return ListTile(
                             leading: const Icon(Icons.bookmark,
                                 color: Color(0xFF00A88F)),
@@ -2284,16 +2752,56 @@ class _ReaderParagraph {
   const _ReaderParagraph({
     required this.index,
     required this.text,
+    required this.startPosition,
+    required this.endPosition,
+    this.isTitle = false,
   });
 
   final int index;
   final String text;
+  final int startPosition;
+  final int endPosition;
+  final bool isTitle;
 }
 
 class _ReaderPageSlice {
   const _ReaderPageSlice({
+    required this.blocks,
+    required this.startPosition,
+    required this.endPosition,
+  });
+
+  final List<_ReaderPageBlock> blocks;
+  final int startPosition;
+  final int endPosition;
+}
+
+class _ReaderPageBlock {
+  const _ReaderPageBlock({
+    required this.paragraphIndex,
+    required this.text,
+    required this.startPosition,
+    required this.endPosition,
+    required this.isTitle,
+    required this.isContinuation,
+  });
+
+  final int paragraphIndex;
+  final String text;
+  final int startPosition;
+  final int endPosition;
+  final bool isTitle;
+  final bool isContinuation;
+}
+
+class _ReaderChapterLayout {
+  const _ReaderChapterLayout({
     required this.paragraphs,
+    required this.pages,
+    required this.paragraphPageLookup,
   });
 
   final List<_ReaderParagraph> paragraphs;
+  final List<_ReaderPageSlice> pages;
+  final Map<int, int> paragraphPageLookup;
 }

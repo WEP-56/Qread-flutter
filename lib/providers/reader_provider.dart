@@ -2,42 +2,29 @@ import 'package:flutter/material.dart';
 import '../models/book.dart';
 import '../models/chapter.dart';
 import '../services/api_service.dart';
+import '../services/local_cache_service.dart';
+import '../services/storage_service.dart';
 
 class ReaderProvider extends ChangeNotifier {
   Book? _book;
   List<Chapter> _chapters = [];
   Set<int> _readChapters = {};
-  int _currentChapterIndex = 0;
-  String _content = '';
   bool _loadingChapters = false;
-  bool _loadingContent = false;
   String? _error;
 
   // Prefetch cache: chapterIndex -> content text
   final Map<int, String> _prefetchCache = {};
 
+  bool get useReplaceRule => _book?.useReplaceRule != false;
+
   Book? get book => _book;
   List<Chapter> get chapters => _chapters;
   Set<int> get readChapters => _readChapters;
-  int get currentChapterIndex => _currentChapterIndex;
-  String get content => _content;
   bool get loadingChapters => _loadingChapters;
-  bool get loadingContent => _loadingContent;
   String? get error => _error;
-  Chapter? get currentChapter {
-    if (_currentChapterIndex >= 0 && _currentChapterIndex < _chapters.length) {
-      return _chapters[_currentChapterIndex];
-    }
-    return null;
-  }
-
-  bool get hasPrevious => _currentChapterIndex > 0;
-  bool get hasNext => _currentChapterIndex < _chapters.length - 1;
 
   void setBook(Book book) {
     _book = book;
-    _currentChapterIndex = book.durChapterIndex ?? 0;
-    _content = '';
     _chapters = [];
     _readChapters = {};
     _prefetchCache.clear();
@@ -45,7 +32,8 @@ class ReaderProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> loadChapters(String accessToken) async {
+  Future<void> loadChapters(String accessToken,
+      {bool loadInitialContent = true}) async {
     if (_book == null) return;
 
     _loadingChapters = true;
@@ -75,14 +63,13 @@ class ReaderProvider extends ChangeNotifier {
         }
       } catch (_) {}
 
-      if (_currentChapterIndex >= _chapters.length) {
-        _currentChapterIndex = 0;
-      }
-
       _loadingChapters = false;
       notifyListeners();
-
-      await loadContent(accessToken, _currentChapterIndex);
+      if (loadInitialContent) {
+        final initialIndex =
+            (_book?.durChapterIndex ?? 0).clamp(0, _chapters.length - 1);
+        await getChapterContent(accessToken, initialIndex);
+      }
     } catch (e) {
       _error = e.toString();
       _loadingChapters = false;
@@ -90,121 +77,152 @@ class ReaderProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> loadContent(String accessToken, int chapterIndex,
-      {bool silent = false}) async {
+  Future<String> getChapterContent(String accessToken, int chapterIndex) async {
     if (_book == null || chapterIndex < 0 || chapterIndex >= _chapters.length) {
-      return;
+      return '';
     }
 
-    // Check prefetch cache first
     if (_prefetchCache.containsKey(chapterIndex)) {
-      if (!silent) {
-        _currentChapterIndex = chapterIndex;
-        _content = _prefetchCache[chapterIndex]!;
-        _loadingContent = false;
-        _readChapters.add(chapterIndex);
-        notifyListeners();
-      }
-      return;
+      return _prefetchCache[chapterIndex]!;
     }
 
-    if (!silent) {
-      _currentChapterIndex = chapterIndex;
-      _loadingContent = true;
-      _error = null;
-      notifyListeners();
+    final cachedContent = await _readCachedChapterContent(chapterIndex);
+    if (cachedContent != null) {
+      _prefetchCache[chapterIndex] = cachedContent;
+      return cachedContent;
     }
 
+    final data = await ApiService.instance.getBookContentNew(
+      accessToken,
+      _book!.bookUrl ?? '',
+      chapterIndex,
+      _book!.origin ?? '',
+      bookname: _book!.name,
+      useReplaceRule: _book!.useReplaceRule == false ? 0 : 1,
+    );
+    final text = data['text']?.toString() ?? '';
+    _prefetchCache[chapterIndex] = text;
+    await _writeCachedChapterContent(chapterIndex, text);
+    return text;
+  }
+
+  Future<void> markReadChapter(String accessToken, int chapterIndex) async {
+    if (_book == null || chapterIndex < 0) return;
+    _readChapters.add(chapterIndex);
+    notifyListeners();
     try {
-      final data = await ApiService.instance.getBookContentNew(
+      await ApiService.instance.addreadchapter(
         accessToken,
+        chapterIndex.toString(),
         _book!.bookUrl ?? '',
-        chapterIndex,
-        _book!.origin ?? '',
-        bookname: _book!.name,
-        useReplaceRule: _book!.useReplaceRule == false ? 0 : 1,
       );
-      final text = data['text']?.toString() ?? '';
+    } catch (_) {}
+  }
 
-      if (silent) {
-        _prefetchCache[chapterIndex] = text;
-        return;
-      }
-
-      _content = text;
-      _loadingContent = false;
-      notifyListeners();
-
-      _readChapters.add(chapterIndex);
-      try {
-        await ApiService.instance.addreadchapter(
-          accessToken,
-          chapterIndex.toString(),
-          _book!.bookUrl ?? '',
-        );
-      } catch (_) {}
-    } catch (e) {
-      if (!silent) {
-        _error = e.toString();
-        _loadingContent = false;
-        notifyListeners();
+  Future<void> prefetchAround(String accessToken, int centerIndex) async {
+    if (_book == null || _chapters.isEmpty) return;
+    final storage = await StorageService.instance;
+    final cacheCount = storage.readerChapterCacheCount;
+    final keepIndices = <int>{};
+    final prevCount = (cacheCount - 1) ~/ 2;
+    final nextCount = cacheCount - 1 - prevCount;
+    final startIndex = (centerIndex - prevCount).clamp(0, _chapters.length - 1);
+    final lastIndex = (centerIndex + nextCount).clamp(0, _chapters.length - 1);
+    for (var index = startIndex; index <= lastIndex; index++) {
+      keepIndices.add(index);
+      if (!_prefetchCache.containsKey(index)) {
+        try {
+          await getChapterContent(accessToken, index);
+        } catch (_) {}
       }
     }
+
+    _prefetchCache.removeWhere((key, _) => !keepIndices.contains(key));
+    await _pruneChapterCaches(keepIndices);
   }
 
-  Future<void> goToChapter(String accessToken, int index) async {
-    if (index < 0 || index >= _chapters.length) return;
-    await loadContent(accessToken, index);
+  Future<void> clearLocalChapterCache() async {
+    _prefetchCache.clear();
   }
 
-  Future<void> nextChapter(String accessToken) async {
-    if (hasNext) {
-      await loadContent(accessToken, _currentChapterIndex + 1);
-    }
-  }
-
-  Future<void> previousChapter(String accessToken) async {
-    if (hasPrevious) {
-      await loadContent(accessToken, _currentChapterIndex - 1);
-    }
-  }
-
-  Future<void> saveProgress(String accessToken, {double? pos}) async {
+  Future<void> saveProgress(
+    String accessToken, {
+    required int chapterIndex,
+    required double pos,
+    String? chapterTitle,
+  }) async {
     if (_book == null) return;
+    final savedIndex = chapterIndex;
+    final savedTitle = chapterTitle ??
+        ((chapterIndex >= 0 && chapterIndex < _chapters.length)
+            ? _chapters[chapterIndex].title
+            : null) ??
+        _book!.durChapterTitle;
+    final savedPos = pos;
     try {
       await ApiService.instance.saveBookProgress(
         accessToken,
         url: _book!.bookUrl,
-        title: currentChapter?.title ?? _book!.durChapterTitle,
-        index: _currentChapterIndex,
-        pos: pos ?? 0.0,
+        title: savedTitle,
+        index: savedIndex,
+        pos: savedPos,
       );
-      _book = Book(
-        bookUrl: _book!.bookUrl,
-        name: _book!.name,
-        author: _book!.author,
-        coverUrl: _book!.coverUrl,
-        intro: _book!.intro,
-        customCoverUrl: _book!.customCoverUrl,
-        tocUrl: _book!.tocUrl,
-        origin: _book!.origin,
-        originName: _book!.originName,
-        type: _book!.type,
-        group: _book!.group,
-        latestChapterTitle: _book!.latestChapterTitle,
-        latestChapterTime: _book!.latestChapterTime,
-        lastCheckTime: _book!.lastCheckTime,
-        lastCheckCount: _book!.lastCheckCount,
-        totalChapterNum: _book!.totalChapterNum,
-        durChapterTitle: currentChapter?.title ?? _book!.durChapterTitle,
-        durChapterIndex: _currentChapterIndex,
-        durChapterPos: pos?.toInt() ?? _book!.durChapterPos ?? 0,
-        canUpdate: _book!.canUpdate,
-        order: _book!.order,
-        useReplaceRule: _book!.useReplaceRule,
-        variable: _book!.variable,
-      );
-      notifyListeners();
+      if (_book != null) {
+        _book = Book(
+          bookUrl: _book!.bookUrl,
+          name: _book!.name,
+          author: _book!.author,
+          coverUrl: _book!.coverUrl,
+          intro: _book!.intro,
+          customCoverUrl: _book!.customCoverUrl,
+          tocUrl: _book!.tocUrl,
+          origin: _book!.origin,
+          originName: _book!.originName,
+          type: _book!.type,
+          group: _book!.group,
+          latestChapterTitle: _book!.latestChapterTitle,
+          latestChapterTime: _book!.latestChapterTime,
+          lastCheckTime: _book!.lastCheckTime,
+          lastCheckCount: _book!.lastCheckCount,
+          totalChapterNum: _book!.totalChapterNum,
+          durChapterTitle: savedTitle,
+          durChapterIndex: savedIndex,
+          durChapterPos: savedPos.toInt(),
+          canUpdate: _book!.canUpdate,
+          order: _book!.order,
+          useReplaceRule: _book!.useReplaceRule,
+          variable: _book!.variable,
+        );
+        notifyListeners();
+      }
     } catch (_) {}
+  }
+
+  Future<String?> _readCachedChapterContent(int chapterIndex) async {
+    if (_book?.bookUrl == null) return null;
+    return LocalCacheService.instance.readChapterContent(
+      bookUrl: _book!.bookUrl!,
+      chapterIndex: chapterIndex,
+      useReplaceRule: useReplaceRule,
+    );
+  }
+
+  Future<void> _writeCachedChapterContent(int chapterIndex, String text) async {
+    if (_book?.bookUrl == null || text.isEmpty) return;
+    await LocalCacheService.instance.writeChapterContent(
+      bookUrl: _book!.bookUrl!,
+      chapterIndex: chapterIndex,
+      useReplaceRule: useReplaceRule,
+      content: text,
+    );
+  }
+
+  Future<void> _pruneChapterCaches(Set<int> keepIndices) async {
+    if (_book?.bookUrl == null) return;
+    await LocalCacheService.instance.pruneChapterCache(
+      bookUrl: _book!.bookUrl!,
+      useReplaceRule: useReplaceRule,
+      keepIndices: keepIndices,
+    );
   }
 }

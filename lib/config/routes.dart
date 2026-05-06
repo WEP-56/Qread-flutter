@@ -7,6 +7,7 @@ import '../pages/replace/replace_rule_editor_page.dart';
 import '../pages/replace/replace_rule_page.dart';
 import '../pages/reader/reader_page.dart';
 import '../pages/search/search_page.dart';
+import '../pages/settings/general_settings_page.dart';
 import '../pages/login/login_page.dart';
 import '../pages/login/source_login_page.dart';
 import '../pages/login/webview_login_page.dart';
@@ -35,6 +36,7 @@ class AppRoutes {
   static const String rssSourceDebug = '/rss/source/debug';
   static const String replaceRules = '/replaceRules';
   static const String replaceRuleEditor = '/replaceRules/editor';
+  static const String generalSettings = '/settings/general';
   static const String discoverExplore = '/discover/explore';
   static const String rssArticles = '/rss/articles';
   static const String rssArticleDetail = '/rss/article';
@@ -43,6 +45,7 @@ class AppRoutes {
     home: (_) => const HomePage(),
     login: (_) => const LoginPage(),
     search: (_) => const SearchPage(),
+    generalSettings: (_) => const GeneralSettingsPage(),
     sourceManage: (_) => const SourceManagePage(),
     rssSource: (_) => const RssSourcePage(),
     replaceRules: (_) => const ReplaceRulePage(),
