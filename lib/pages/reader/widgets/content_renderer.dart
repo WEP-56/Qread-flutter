@@ -7,6 +7,9 @@ import 'reader_theme.dart';
 ///
 /// 负责将 PageSlice 渲染为可显示的 Widget，
 /// 包括章节头、文本行、页脚等。
+///
+/// 关键：分页引擎已经精确计算了每页的行数，
+/// 渲染端必须严格适配，不能超出可用区域。
 
 class ContentRenderer {
   /// 渲染一个完整页面
@@ -28,7 +31,7 @@ class ContentRenderer {
         children: [
           _buildChapterHeader(chapterTitle, theme),
           const SizedBox(height: 14),
-          // 使用 Expanded + overflow: Clip 嚴格限制文字區域
+          // 使用 Expanded 限制文字区域高度，内部用 ClipRect 裁剪
           Expanded(
             child: ClipRect(
               child: Column(
@@ -46,6 +49,7 @@ class ContentRenderer {
               ),
             ),
           ),
+          // 页脚固定在底部
           _buildFooter(
             theme: theme,
             pageIndicator: pageIndicator,
@@ -59,12 +63,14 @@ class ContentRenderer {
 
   /// 渲染章节头
   static Widget _buildChapterHeader(String title, ReaderTheme theme) {
+    if (title.isEmpty) return const SizedBox.shrink();
     return Text(
       title,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
         fontSize: 12,
+        height: 1.2,
         color: theme.secondaryText,
       ),
     );
@@ -80,23 +86,22 @@ class ContentRenderer {
   }) {
     final isHighlighted = line.paragraphIndex == ttsParagraphIndex;
     final effectiveFontSize = line.isTitle ? fontSize + 4 : fontSize;
-    final effectiveColor = isHighlighted ? theme.highlight : theme.text;
     final effectiveLineHeight = line.isTitle ? 1.45 : lineHeight;
     final fontWeight =
         line.isTitle ? FontWeight.w600 : FontWeight.normal;
+    final effectiveColor = isHighlighted ? theme.highlight : theme.text;
 
     // 首行缩进
     final displayText =
         line.isTitle ? line.text : '${line.isFirstLineOfParagraph ? '\u3000\u3000' : ''}${line.text}';
 
+    // 段落间距：段尾行 margin 10px，段内行 margin 2px
+    final marginBottom = line.isLastLineOfParagraph ? 10.0 : 2.0;
+
     return Container(
-      margin: EdgeInsets.only(
-        bottom: line.isLastLineOfParagraph ? 10 : 2,
-      ),
+      margin: EdgeInsets.only(bottom: marginBottom),
       child: Text(
         displayText,
-        softWrap: true,
-        overflow: TextOverflow.visible,
         style: TextStyle(
           fontSize: effectiveFontSize,
           color: effectiveColor,
@@ -150,12 +155,12 @@ class ContentRenderer {
       children: [
         Text(
           timeLabel,
-          style: TextStyle(fontSize: 11, color: theme.secondaryText),
+          style: TextStyle(fontSize: 11, height: 1.2, color: theme.secondaryText),
         ),
         const Spacer(),
         Text(
           pageIndicator,
-          style: TextStyle(fontSize: 11, color: theme.secondaryText),
+          style: TextStyle(fontSize: 11, height: 1.2, color: theme.secondaryText),
         ),
         const Spacer(),
         Row(
@@ -165,7 +170,7 @@ class ContentRenderer {
             const SizedBox(width: 4),
             Text(
               batteryLabel,
-              style: TextStyle(fontSize: 11, color: theme.secondaryText),
+              style: TextStyle(fontSize: 11, height: 1.2, color: theme.secondaryText),
             ),
           ],
         ),

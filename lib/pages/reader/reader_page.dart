@@ -333,6 +333,11 @@ class _ReaderPageState extends State<ReaderPage> {
         ? 0
         : layout.pages[targetPage].startPosition;
 
+    // 先创建新 PageController，再 setState —— 避免中间状态 rebuild
+    // 使用旧 controller 导致 PageView 跳到错误页码
+    final oldController = _pageController;
+    _pageController = PageController(initialPage: targetPage);
+
     // 一次性更新所有状态
     setState(() {
       _state.loadingDisplayedChapter = false;
@@ -346,11 +351,15 @@ class _ReaderPageState extends State<ReaderPage> {
       _state.chapterPosition = normalizedPosition;
     });
 
+    // dispose 旧 controller（在新 controller 已就位后）
+    oldController.dispose();
+
     _paragraphKeys =
         List.generate(_state.paragraphs.length, (_) => GlobalKey());
-    _recreatePageController(targetPage);
     _state.consumePendingPosition();
 
+    // 在 setState 之后再更新 book 的章节信息，避免 saveProgress 的
+    // notifyListeners 在中间状态触发 Consumer rebuild
     provider.book?.durChapterIndex = chapterIndex;
     provider.book?.durChapterTitle = chapterTitle ?? '';
 
@@ -409,13 +418,6 @@ class _ReaderPageState extends State<ReaderPage> {
     return layout;
   }
 
-  void _recreatePageController(int initialPage) {
-    // 先创建新 controller，再 dispose 旧的，避免旧 PageView 在 dispose 期间
-    // 触发 onPageChanged 回调导致 currentPage 被错误覆盖
-    final oldController = _pageController;
-    _pageController = PageController(initialPage: initialPage);
-    oldController.dispose();
-  }
 
   Future<void> _prefetchNextChapter(String token, int chapterIndex) async {
     final provider = context.read<ReaderProvider>();
@@ -775,6 +777,7 @@ class _ReaderPageState extends State<ReaderPage> {
             _displayedChapter(provider)?.title ?? provider.book?.durChapterTitle ?? '';
 
         return PagedReader(
+          key: ValueKey('chapter_${_state.laidOutChapterIndex}'),
           pages: _state.pages,
           pageController: _pageController,
           theme: _state.currentTheme,
@@ -1034,7 +1037,10 @@ class _ReaderPageState extends State<ReaderPage> {
     });
 
     _paragraphKeys = List.generate(_state.paragraphs.length, (_) => GlobalKey());
-    _recreatePageController(targetPage);
+    // 先创建新 controller，再 dispose 旧的
+    final oldCtrl = _pageController;
+    _pageController = PageController(initialPage: targetPage);
+    oldCtrl.dispose();
     _state.consumePendingPosition();
   }
 

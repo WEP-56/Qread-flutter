@@ -2,32 +2,30 @@ import 'package:flutter/material.dart';
 
 import 'models.dart';
 
-/// 行级分页引擎
+/// 行级分页引擎 v3
 ///
 /// 核心设计参照 legado 的 TextChapterLayout：
 /// 1. 将段落文本通过 TextPainter 拆成行
 /// 2. 逐行累加高度，当累计高度 + 下一行高度 > 可用高度时换页
 /// 3. 段落自然在行边界处跨页，无需段中截断的特殊处理
 ///
-/// 解决的问题：
-/// - 旧版段落级分页在"页面有内容但新段落放不下"时直接提交空底页
-/// - 旧版只在段落独占整页时才触发二分截断，导致大段文字推到下页
-/// - 新版行级分页天然解决这些问题，每页都填到最满
-///
-/// v2 修复：
-/// - 严格限制文字区域不超出可用高度（解决滑轨和溢出问题）
-/// - 中文断行优化：避免单字独占一行（widow/orphan 控制）
-/// - 精确的行高和间距计算，确保排版引擎与渲染引擎一致
+/// v3 修复：
+/// - 精确测量章节头/页脚高度，消除 32px 溢出
+/// - 移除孤字检测逻辑（过于激进导致段落异常分段）
+/// - 使用 TextPainter 实测行高而非 fontSize*lineHeight 估算
+/// - 增加安全余量确保内容不溢出
 
 class PaginationEngine {
   /// 页面布局常量
   static const double horizontalPadding = 24.0;
   static const double topPadding = 18.0;
   static const double bottomPadding = 10.0;
-  static const double chapterHeaderHeight = 30.0;
-  static const double footerHeight = 22.0;
   static const double headerBottomSpacing = 14.0;
   static const double paragraphSpacing = 10.0;
+  static const double lineSpacing = 2.0;
+
+  /// 安全余量：防止浮点累积误差导致的溢出
+  static const double safetyMargin = 4.0;
 
   /// 计算章节的完整分页布局
   ChapterLayout paginate({
@@ -54,22 +52,24 @@ class PaginationEngine {
       );
     }
 
-    // 2. 计算可用区域（严格计算，与 content_renderer.dart 保持一致）
+    // 2. 计算可用区域
     final availableWidth = viewportSize.width - horizontalPadding * 2;
+
+    // 用 TextPainter 精确测量章节头和页脚高度
+    final headerHeight = _measureHeaderHeight(chapterTitle ?? '', fontSize);
+    final footerHeight = _measureFooterHeight(fontSize);
+
     final availableHeight = viewportSize.height -
         safeTop -
         safeBottom -
         topPadding -
         bottomPadding -
-        chapterHeaderHeight -
+        headerHeight -
         footerHeight -
-        headerBottomSpacing;
+        headerBottomSpacing -
+        safetyMargin;
 
-    // 3. 计算精确行高（与渲染端 TextStyle 一致）
-    final bodyLineHeightPx = fontSize * lineHeight;
-    final titleLineHeightPx = (fontSize + 4) * 1.45;
-
-    // 4. 逐段落 → 逐行 → 分页
+    // 3. 逐段落 → 逐行 → 分页
     final pages = <PageSlice>[];
     final lookup = <int, int>{};
     var currentLines = <TextLine>[];
@@ -109,7 +109,7 @@ class PaginationEngine {
     }
 
     for (final paragraph in paragraphs) {
-      // 4a. 将段落拆成行
+      // 3a. 将段落拆成行
       final lines = _splitParagraphToLines(
         paragraph: paragraph,
         fontSize: fontSize,
@@ -117,16 +117,13 @@ class PaginationEngine {
         maxWidth: availableWidth,
       );
 
-      // 4b. 逐行添加到当前页
+      // 3b. 逐行添加到当前页
       for (int i = 0; i < lines.length; i++) {
         final line = lines[i];
-        // 行实际占用高度 = fontSize * lineHeight（与渲染端一致）
-        final lineHeightPx =
-            line.isTitle ? titleLineHeightPx : bodyLineHeightPx;
-        // 行间距：段内行间距 2px，段尾用 paragraphSpacing
+        // 行实际占用高度 = line.height（TextPainter 实测） + 间距
         final isLastLine = line.isLastLineOfParagraph;
-        final lineMarginBottom = isLastLine ? paragraphSpacing : 2.0;
-        final lineTotalHeight = lineHeightPx + lineMarginBottom;
+        final lineMarginBottom = isLastLine ? paragraphSpacing : lineSpacing;
+        final lineTotalHeight = line.height + lineMarginBottom;
 
         // 如果加上这行会超出可用高度，先提交当前页
         if (currentLines.isNotEmpty &&
@@ -152,16 +149,41 @@ class PaginationEngine {
     );
   }
 
+  /// 用 TextPainter 精确测量章节头高度
+  double _measureHeaderHeight(String chapterTitle, double fontSize) {
+    if (chapterTitle.isEmpty) return 0;
+    final painter = TextPainter(
+      text: TextSpan(
+        text: chapterTitle,
+        style: TextStyle(fontSize: 12, height: 1.2),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(maxWidth: double.infinity);
+    return painter.height;
+  }
+
+  /// 用 TextPainter 精确测量页脚高度
+  double _measureFooterHeight(double fontSize) {
+    // 页脚包含时间和电池信息，字号 11
+    final painter = TextPainter(
+      text: TextSpan(
+        text: '00:00  1/1  100%',
+        style: TextStyle(fontSize: 11, height: 1.2),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout(maxWidth: double.infinity);
+    // 加上电池图标的高度（约 13px）
+    return painter.height > 13 ? painter.height : 13.0;
+  }
+
   /// 将段落拆分为 TextLine 列表
   ///
   /// 核心方法：使用 TextPainter 的 computeLineMetrics 获取行数，
   /// 然后用 getLineBoundary 逐行获取字符范围。
   /// 行文本直接使用 fullText 的子串，在渲染时根据 isFirstLineOfParagraph
   /// 决定是否加缩进前缀，避免偏移映射错误。
-  ///
-  /// 中文断行优化（v2）：
-  /// - 检测"孤字"情况（行尾只剩1个汉字），如果存在则将孤字移到下一行
-  /// - 避免中文双字词被拆开（如"长老"拆成"长"+"老"）
   List<TextLine> _splitParagraphToLines({
     required ReaderParagraph paragraph,
     required double fontSize,
@@ -172,7 +194,6 @@ class PaginationEngine {
     final effectiveFontSize = isTitle ? fontSize + 4 : fontSize;
     final effectiveLineHeight = isTitle ? 1.45 : lineHeight;
     final fontWeight = isTitle ? FontWeight.w600 : FontWeight.normal;
-    final lineHeightPx = effectiveFontSize * effectiveLineHeight;
 
     // 首行加缩进——与渲染端保持一致
     final fullText =
@@ -194,7 +215,6 @@ class PaginationEngine {
     )..layout(maxWidth: maxWidth);
 
     final lineMetrics = painter.computeLineMetrics();
-    final rawLines = <_RawLine>[];
 
     if (lineMetrics.isEmpty || paragraph.text.isEmpty) {
       return [];
@@ -203,6 +223,7 @@ class PaginationEngine {
     // 逐行获取边界
     int currentOffset = 0;
     final textLength = fullText.length;
+    final result = <TextLine>[];
 
     for (int lineIndex = 0; lineIndex < lineMetrics.length; lineIndex++) {
       if (currentOffset >= textLength) break;
@@ -260,77 +281,21 @@ class PaginationEngine {
 
       final isLastLine = lineIndex == lineMetrics.length - 1;
 
-      rawLines.add(_RawLine(
-        displayText: displayText,
-        originalStart: originalStart,
-        originalEnd: originalEnd,
-        isFirstLine: lineIndex == 0,
-        isLastLine: isLastLine,
+      // 使用 TextPainter 实测的行高（更精确）
+      final measuredHeight = lineMetrics[lineIndex].height;
+
+      result.add(TextLine(
+        paragraphIndex: paragraph.index,
+        text: displayText,
+        startOffset: originalStart,
+        endOffset: originalEnd,
+        isTitle: isTitle,
+        isFirstLineOfParagraph: lineIndex == 0,
+        isLastLineOfParagraph: isLastLine,
+        height: measuredHeight,
       ));
 
       currentOffset = lineEnd;
-    }
-
-    // 中文断行优化：处理孤字（orphan）问题
-    // 如果一行末尾只有1个汉字，将它移到下一行开头
-    // 这样可以避免"长老"被拆成"长"+"老"等情况
-    if (rawLines.length > 1 && !isTitle) {
-      for (int i = 0; i < rawLines.length - 1; i++) {
-        final current = rawLines[i];
-        final next = rawLines[i + 1];
-
-        // 只处理非最后一行
-        if (current.isLastLine) continue;
-
-        final text = current.displayText;
-        // 检测行尾是否只有1个CJK字符（孤字）
-        if (text.length >= 2 && _isCjkChar(text.codeUnitAt(text.length - 1))) {
-          // 检查行尾字符前一个字符是否也是CJK
-          // 如果是，说明可能是双字词被拆开了
-          final prevChar = text.codeUnitAt(text.length - 2);
-          if (_isCjkChar(prevChar)) {
-            // 检查下一行开头是否也是CJK字符
-            // 只有当下一行也有内容时才做合并
-            if (next.displayText.isNotEmpty) {
-              // 将当前行最后一个字符移到下一行
-              final orphanChar = text.substring(text.length - 1);
-              final newCurrentText = text.substring(0, text.length - 1);
-              final newNextText = orphanChar + next.displayText;
-
-              rawLines[i] = _RawLine(
-                displayText: newCurrentText,
-                originalStart: current.originalStart,
-                originalEnd: current.originalEnd - 1,
-                isFirstLine: current.isFirstLine,
-                isLastLine: false,
-              );
-              rawLines[i + 1] = _RawLine(
-                displayText: newNextText,
-                originalStart: next.originalStart - 1,
-                originalEnd: next.originalEnd,
-                isFirstLine: next.isFirstLine,
-                isLastLine: next.isLastLine,
-              );
-            }
-          }
-        }
-      }
-    }
-
-    // 转换为 TextLine 列表
-    final result = <TextLine>[];
-    for (int i = 0; i < rawLines.length; i++) {
-      final raw = rawLines[i];
-      result.add(TextLine(
-        paragraphIndex: paragraph.index,
-        text: raw.displayText,
-        startOffset: raw.originalStart,
-        endOffset: raw.originalEnd,
-        isTitle: isTitle,
-        isFirstLineOfParagraph: raw.isFirstLine,
-        isLastLineOfParagraph: raw.isLastLine,
-        height: lineHeightPx,
-      ));
     }
 
     // 修正最后一行标记
@@ -348,19 +313,6 @@ class PaginationEngine {
     }
 
     return result;
-  }
-
-  /// 判断是否为CJK字符
-  static bool _isCjkChar(int codeUnit) {
-    // CJK Unified Ideographs: 4E00-9FFF
-    // CJK Unified Ideographs Extension A: 3400-4DBF
-    // CJK Compatibility Ideographs: F900-FAFF
-    // CJK Radicals Supplement: 2E80-2EFF
-    // CJK Symbols and Punctuation: 3000-303F (含中文标点)
-    return (codeUnit >= 0x4E00 && codeUnit <= 0x9FFF) ||
-        (codeUnit >= 0x3400 && codeUnit <= 0x4DBF) ||
-        (codeUnit >= 0xF900 && codeUnit <= 0xFAFF) ||
-        (codeUnit >= 0x2E80 && codeUnit <= 0x2EFF);
   }
 
   /// 将 HTML/混合内容清洗为纯文本段落
@@ -429,21 +381,4 @@ class PaginationEngine {
       caseSensitive: false,
     ).hasMatch(content);
   }
-}
-
-/// 内部使用的行数据（用于断行优化处理）
-class _RawLine {
-  final String displayText;
-  final int originalStart;
-  final int originalEnd;
-  final bool isFirstLine;
-  final bool isLastLine;
-
-  _RawLine({
-    required this.displayText,
-    required this.originalStart,
-    required this.originalEnd,
-    required this.isFirstLine,
-    required this.isLastLine,
-  });
 }
