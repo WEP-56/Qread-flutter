@@ -41,44 +41,6 @@ class ReaderProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 先获取最新书籍信息，更新阅读进度（durChapterPos）
-      try {
-        final bookInfo = await ApiService.instance.getBookInfo(
-          accessToken,
-          _book!.bookUrl ?? '',
-          _book!.origin ?? '',
-        );
-        final freshBook = Book.fromJson(bookInfo);
-        // 用后端最新数据更新进度字段
-        _book = Book(
-          bookUrl: _book!.bookUrl,
-          name: _book!.name,
-          author: _book!.author,
-          coverUrl: _book!.coverUrl,
-          intro: _book!.intro,
-          customCoverUrl: _book!.customCoverUrl,
-          tocUrl: _book!.tocUrl,
-          origin: _book!.origin,
-          originName: _book!.originName,
-          type: _book!.type,
-          group: _book!.group,
-          latestChapterTitle: _book!.latestChapterTitle,
-          latestChapterTime: _book!.latestChapterTime,
-          lastCheckTime: _book!.lastCheckTime,
-          lastCheckCount: _book!.lastCheckCount,
-          totalChapterNum: _book!.totalChapterNum,
-          durChapterTitle: freshBook.durChapterTitle ?? _book!.durChapterTitle,
-          durChapterIndex: freshBook.durChapterIndex ?? _book!.durChapterIndex,
-          durChapterPos: freshBook.durChapterPos ?? _book!.durChapterPos,
-          canUpdate: _book!.canUpdate,
-          order: _book!.order,
-          useReplaceRule: _book!.useReplaceRule,
-          variable: _book!.variable,
-        );
-      } catch (_) {
-        // 获取失败不影响主流程，使用原始 Book 数据
-      }
-
       _chapters = await ApiService.instance.getChapterListNew(
         accessToken,
         _book!.bookUrl ?? '',

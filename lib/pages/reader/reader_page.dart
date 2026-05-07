@@ -32,6 +32,8 @@ class _ReaderPageState extends State<ReaderPage> {
   static const _keyTheme = 'reader_theme';
   static const _keyPageMode = 'reader_page_mode';
   static const _keyAutoPageInterval = 'reader_auto_page_interval';
+  static const _keyProgressChapterPrefix = 'reader_progress_ch_';
+  static const _keyProgressPosPrefix = 'reader_progress_pos_';
 
   late PageController _pageController;
   final ScrollController _comicScrollController = ScrollController();
@@ -185,13 +187,23 @@ class _ReaderPageState extends State<ReaderPage> {
       _state.initialChapterOpened = true;
       final initialIndex = (provider.book?.durChapterIndex ?? 0)
           .clamp(0, provider.chapters.length - 1);
-      final initialPos = provider.book?.durChapterPos ?? 0;
-      final openAtEnd = initialPos > 1 << 29;
-      _openChapter(
-        initialIndex,
-        chapterPosition: initialPos > 1 ? initialPos.round() : 0,
-        openAtEnd: openAtEnd,
-      );
+      // 优先从本地读取页级进度
+      _loadProgressLocalPos().then((localPos) {
+        if (!mounted) return;
+        int chapterPos;
+        if (localPos != null && localPos > 1) {
+          chapterPos = localPos.round();
+        } else {
+          final serverPos = provider.book?.durChapterPos ?? 0;
+          chapterPos = serverPos > 1 ? serverPos : 0;
+        }
+        final openAtEnd = chapterPos > 1 << 29;
+        _openChapter(
+          initialIndex,
+          chapterPosition: chapterPos,
+          openAtEnd: openAtEnd,
+        );
+      });
     }
   }
 
@@ -264,24 +276,59 @@ class _ReaderPageState extends State<ReaderPage> {
     final chapter = chapterIndex >= 0 && chapterIndex < provider.chapters.length
         ? provider.chapters[chapterIndex]
         : null;
+    final pos = _getProgress();
     provider.saveProgress(
       _token!,
       chapterIndex: chapterIndex,
       chapterTitle: chapter?.title,
-      pos: _getProgress(),
+      pos: pos,
     );
+    // 同步保存到本地
+    _saveProgressLocal(chapterIndex, pos);
   }
 
   Future<void> _saveProgress({double? pos}) async {
     if (_token == null) return;
     final provider = context.read<ReaderProvider>();
     final chapter = _displayedChapter(provider);
+    final chapterIndex = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+    final savePos = pos ?? _getProgress();
+
+    // 保存到远端
     await provider.saveProgress(
       _token!,
-      chapterIndex: _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0),
+      chapterIndex: chapterIndex,
       chapterTitle: chapter?.title,
-      pos: pos ?? _getProgress(),
+      pos: savePos,
     );
+
+    // 同时保存到本地（确保页级进度不丢失）
+    _saveProgressLocal(chapterIndex, savePos);
+  }
+
+  /// 保存阅读进度到本地 SharedPreferences
+  void _saveProgressLocal(int chapterIndex, double pos) {
+    if (_bookUrl == null) return;
+    final encodedUrl = _bookUrl!.replaceAll('/', '_').replaceAll(':', '_');
+    SharedPreferences.getInstance().then((prefs) {
+      prefs.setInt('$_keyProgressChapterPrefix$encodedUrl', chapterIndex);
+      prefs.setDouble('$_keyProgressPosPrefix$encodedUrl', pos);
+    });
+  }
+
+  /// 从本地读取阅读进度
+  Future<int?> _loadProgressLocalChapter() async {
+    if (_bookUrl == null) return null;
+    final encodedUrl = _bookUrl!.replaceAll('/', '_').replaceAll(':', '_');
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('$_keyProgressChapterPrefix$encodedUrl');
+  }
+
+  Future<double?> _loadProgressLocalPos() async {
+    if (_bookUrl == null) return null;
+    final encodedUrl = _bookUrl!.replaceAll('/', '_').replaceAll(':', '_');
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble('$_keyProgressPosPrefix$encodedUrl');
   }
 
   // ============================================================
