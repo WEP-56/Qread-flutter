@@ -13,6 +13,8 @@ import '../../models/chapter.dart';
 import '../../providers/reader_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/browsing_history_service.dart';
+import '../../services/reading_stats_service.dart';
 import '../../services/tts_service.dart';
 import 'engine/engine.dart';
 import 'reader_state.dart';
@@ -93,6 +95,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _tts.removeListener(_onTtsStateChanged);
     _tts.stop();
     _saveProgressSync();
+    unawaited(ReadingStatsService.instance.endSession());
     super.dispose();
   }
 
@@ -189,6 +192,8 @@ class _ReaderPageState extends State<ReaderPage> {
   void _initBook() {
     final book = ModalRoute.of(context)?.settings.arguments as Book?;
     if (book == null) return;
+    unawaited(BrowsingHistoryService.instance.recordBook(book));
+    ReadingStatsService.instance.startSession();
     _token = context.read<UserProvider>().token;
     _state.isComic = book.type == 2;
     _bookUrl = book.bookUrl;

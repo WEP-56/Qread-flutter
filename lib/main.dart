@@ -10,6 +10,7 @@ import 'providers/rss_manage_provider.dart';
 import 'providers/reader_provider.dart';
 import 'providers/replace_rule_provider.dart';
 import 'providers/source_manage_provider.dart';
+import 'providers/theme_provider.dart';
 import 'services/api_service.dart';
 import 'services/storage_service.dart';
 
@@ -39,6 +40,7 @@ class QreadApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ReaderProvider()),
         ChangeNotifierProvider(create: (_) => SourceManageProvider()),
         ChangeNotifierProvider(create: (_) => ReplaceRuleProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()..init()),
       ],
       child: const App(),
     );

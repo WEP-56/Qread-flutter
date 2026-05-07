@@ -1,28 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'config/theme.dart';
 import 'config/routes.dart';
+import 'providers/theme_provider.dart';
 
-class App extends StatefulWidget {
+class App extends StatelessWidget {
   const App({Key? key}) : super(key: key);
 
   @override
-  State<App> createState() => _AppState();
-}
-
-class _AppState extends State<App> {
-  final ThemeMode _themeMode = ThemeMode.system;
-
-  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Qread',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: _themeMode,
-      initialRoute: '/',
-      routes: AppRoutes.routes,
-      onGenerateRoute: AppRoutes.onGenerateRoute,
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, _) => MaterialApp(
+        title: 'Qread',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: themeProvider.themeMode,
+        initialRoute: '/',
+        routes: AppRoutes.routes,
+        onGenerateRoute: AppRoutes.onGenerateRoute,
+      ),
     );
   }
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import '../../models/rss_source.dart';
 import '../../providers/rss_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/rss_source_card.dart';
@@ -16,6 +18,15 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
   bool get wantKeepAlive => true;
 
   bool _dataLoaded = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  String? _selectedGroup;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -27,16 +38,17 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
     final isLoggedIn = context.read<UserProvider>().isLoggedIn;
     if (isLoggedIn && !_dataLoaded) {
       _dataLoaded = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadSources());
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => _loadSources(refresh: true));
     } else if (!isLoggedIn) {
       _dataLoaded = false;
     }
   }
 
-  void _loadSources() {
+  Future<void> _loadSources({bool refresh = false}) async {
     final token = context.read<UserProvider>().token;
     if (token != null) {
-      context.read<RssProvider>().loadSources(token);
+      await context.read<RssProvider>().loadSources(token, refresh: refresh);
     }
   }
 
@@ -48,15 +60,95 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('订阅'),
+        toolbarHeight: 72,
+        titleSpacing: 16,
+        title: _buildSearchField(),
         actions: [
+          _buildGroupMenuButton(provider.sources),
           IconButton(
             icon: const Icon(Icons.add),
+            tooltip: '订阅源管理',
             onPressed: () => Navigator.pushNamed(context, '/rssSource'),
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: _buildBody(userProvider, provider),
+    );
+  }
+
+  Widget _buildSearchField() {
+    final theme = Theme.of(context);
+    final activeQuery = _searchQuery.trim().isNotEmpty;
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.28),
+        ),
+      ),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) {
+          setState(() {
+            _searchQuery = value;
+          });
+        },
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: '搜索订阅源',
+          prefixIcon: const Icon(Icons.search_rounded),
+          suffixIcon: activeQuery
+              ? IconButton(
+                  icon: const Icon(Icons.close_rounded),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchQuery = '';
+                    });
+                  },
+                )
+              : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGroupMenuButton(List<RssSource> sources) {
+    final groups = _collectGroups(sources);
+    return PopupMenuButton<String>(
+      tooltip: '切换分组',
+      position: PopupMenuPosition.under,
+      icon: Icon(
+        Icons.filter_list_rounded,
+        color: _selectedGroup == null
+            ? null
+            : Theme.of(context).colorScheme.primary,
+      ),
+      onSelected: (value) {
+        setState(() {
+          _selectedGroup = value == '__all__' ? null : value;
+        });
+      },
+      itemBuilder: (context) => [
+        CheckedPopupMenuItem<String>(
+          value: '__all__',
+          checked: _selectedGroup == null,
+          child: const Text('全部分组'),
+        ),
+        ...groups.map(
+          (group) => CheckedPopupMenuItem<String>(
+            value: group,
+            checked: _selectedGroup == group,
+            child: Text(group),
+          ),
+        ),
+      ],
     );
   }
 
@@ -74,7 +166,10 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
           children: [
             Text(provider.error!, style: const TextStyle(color: Colors.red)),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: _loadSources, child: const Text('重试')),
+            ElevatedButton(
+              onPressed: () => _loadSources(refresh: true),
+              child: const Text('重试'),
+            ),
           ],
         ),
       );
@@ -97,48 +192,125 @@ class _RssPageState extends State<RssPage> with AutomaticKeepAliveClientMixin {
       );
     }
 
-    final groups = <String, List<dynamic>>{};
-    for (final source in provider.sources) {
-      final group = source.sourceGroup ?? '未分组';
-      groups.putIfAbsent(group, () => []).add(source);
+    final visibleSources = _filterSources(provider.sources);
+    if (visibleSources.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: () => _loadSources(refresh: true),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 24),
+          children: [
+            if (_selectedGroup != null || _searchQuery.trim().isNotEmpty)
+              _buildFilterBanner(),
+            const SizedBox(height: 60),
+            const Icon(Icons.search_off_rounded, size: 54, color: Colors.grey),
+            const SizedBox(height: 12),
+            const Center(child: Text('没有匹配的订阅源')),
+          ],
+        ),
+      );
     }
 
     return RefreshIndicator(
-      onRefresh: () async {
-        _dataLoaded = false;
-        _loadSources();
-      },
-      child: ListView(
-        children: groups.entries.map((entry) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Text(
-                  entry.key,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                ),
-              ),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  childAspectRatio: 1.8,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                ),
-                itemCount: entry.value.length,
-                itemBuilder: (context, index) {
-                  return RssSourceCard(source: entry.value[index]);
-                },
-              ),
-            ],
+      onRefresh: () => _loadSources(refresh: true),
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          childAspectRatio: 0.8,
+          crossAxisSpacing: 14,
+          mainAxisSpacing: 14,
+        ),
+        itemCount: visibleSources.length +
+            ((_selectedGroup != null || _searchQuery.trim().isNotEmpty)
+                ? 1
+                : 0),
+        itemBuilder: (context, index) {
+          if (_selectedGroup != null || _searchQuery.trim().isNotEmpty) {
+            if (index == 0) {
+              return _buildFilterBanner();
+            }
+            index -= 1;
+          }
+
+          return RssSourceCard(
+            source: visibleSources[index],
+            displayMode: RssSourceCardDisplayMode.grid,
           );
-        }).toList(),
+        },
       ),
     );
+  }
+
+  Widget _buildFilterBanner() {
+    final theme = Theme.of(context);
+    final parts = <String>[
+      if (_selectedGroup != null) '分组：$_selectedGroup',
+      if (_searchQuery.trim().isNotEmpty) '搜索：${_searchQuery.trim()}',
+    ];
+    return Container(
+      decoration: BoxDecoration(
+        color:
+            theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.34),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: theme.colorScheme.outline.withValues(alpha: 0.18),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          const Icon(Icons.filter_alt_outlined, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              parts.join('  ·  '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              _searchController.clear();
+              setState(() {
+                _selectedGroup = null;
+                _searchQuery = '';
+              });
+            },
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<String> _collectGroups(List<RssSource> sources) {
+    final groups = <String>{};
+    for (final source in sources) {
+      final group = (source.sourceGroup ?? '').trim();
+      if (group.isNotEmpty) {
+        groups.add(group);
+      }
+    }
+    final result = groups.toList(growable: false);
+    result.sort();
+    return result;
+  }
+
+  List<RssSource> _filterSources(List<RssSource> sources) {
+    final query = _searchQuery.trim().toLowerCase();
+    return sources.where((source) {
+      final name = (source.sourceName ?? '').trim();
+      final group = (source.sourceGroup ?? '').trim();
+      final url = (source.sourceUrl ?? '').trim();
+
+      final matchesGroup = _selectedGroup == null || group == _selectedGroup;
+      final matchesSearch = query.isEmpty ||
+          name.toLowerCase().contains(query) ||
+          group.toLowerCase().contains(query) ||
+          url.toLowerCase().contains(query);
+
+      return matchesGroup && matchesSearch;
+    }).toList(growable: false);
   }
 }

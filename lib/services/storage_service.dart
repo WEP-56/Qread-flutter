@@ -39,6 +39,8 @@ class StorageService {
   String? readString(String key) => _prefs.getString(key);
   Future<void> setString(String key, String value) =>
       _prefs.setString(key, value);
+  int? readInt(String key) => _prefs.getInt(key);
+  Future<void> setInt(String key, int value) => _prefs.setInt(key, value);
 
   bool get isLoggedIn => token != null && token!.isNotEmpty;
 
