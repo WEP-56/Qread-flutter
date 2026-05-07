@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'engine/engine.dart';
 import 'widgets/reader_theme.dart';
+import 'widgets/controller_overlay.dart';
 
 /// 阅读器核心状态
 ///
@@ -152,4 +153,11 @@ class ReaderState with ChangeNotifier {
   }
 
   String batteryLabel() => batteryLevel == null ? '--' : '$batteryLevel%';
+
+  /// 胶囊模式——控制器根据此值切换悬浮胶囊内容
+  ControllerCapsuleMode get capsuleMode {
+    if (autoPageRunning) return ControllerCapsuleMode.autoPage;
+    if (ttsReading || ttsParagraphIndex >= 0) return ControllerCapsuleMode.tts;
+    return ControllerCapsuleMode.normal;
+  }
 }

@@ -825,7 +825,7 @@ class _ReaderPageState extends State<ReaderPage> {
                   child: _buildContent(provider),
                 ),
               ),
-              if (_state.showController && !_state.autoPageRunning) ...[
+              if (_state.showController) ...[
                 Positioned.fill(
                   child: GestureDetector(
                     onTap: _toggleController,
@@ -834,64 +834,62 @@ class _ReaderPageState extends State<ReaderPage> {
                   ),
                 ),
                 ControllerOverlay(
-                  bookName: provider.book?.name ?? '',
-                  chapterTitle: _displayedChapter(provider)?.title ?? '',
-                  sourceName:
-                      provider.book?.originName ?? provider.book?.origin ?? '未知书源',
-                  hasBookmark: _hasBookmarkAtCurrent(provider),
-                  useReplaceRule: provider.book?.useReplaceRule == true,
-                  isTtsActive: _state.ttsReading,
-                  ttsState: _tts.state,
-                  ttsRate: _tts.rate,
-                  autoPageRunning: _state.autoPageRunning,
-                  autoPageInterval: _state.autoPageInterval,
-                  chapterIndex: _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0),
-                  totalChapters: provider.chapters.length,
-                  chapterSliderValue: _state.chapterSliderValue,
-                  ttsParagraphIndex: _state.ttsParagraphIndex,
-                  totalParagraphs: _state.paragraphs.length,
-                  onBack: () {
-                    _saveProgress(pos: _getProgress());
-                    Navigator.pop(context);
-                  },
-                  onToggleBookmark: () => _toggleBookmark(provider),
-                  onShowChangeType: () => _showChangeTypeDialog(provider),
-                  onStartAutoPage: _startAutoPageMode,
-                  onStartTts: _startTts,
-                  onToggleTheme: _toggleReaderTheme,
-                  onPrevChapter: _goToPreviousChapter,
-                  onNextChapter: _goToNextChapter,
-                  onChapterSliderChanged: (value) {
-                    setState(() => _state.chapterSliderValue = value);
-                  },
-                  onChapterSliderEnd: (value) {
-                    setState(() => _state.chapterSliderValue = null);
-                    final target = value.round();
-                    final ci = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
-                    if (target != ci && _token != null) {
+                  data: ReaderControllerViewData(
+                    bookName: provider.book?.name ?? '',
+                    chapterTitle: _displayedChapter(provider)?.title ?? '',
+                    sourceName:
+                        provider.book?.originName ?? provider.book?.origin ?? '未知书源',
+                    hasBookmark: _hasBookmarkAtCurrent(provider),
+                    replaceRuleEnabled: provider.book?.useReplaceRule == true,
+                    themeName: _state.theme,
+                    capsuleMode: _state.capsuleMode,
+                    ttsState: _tts.state,
+                    ttsRate: _tts.rate,
+                    autoPageInterval: _state.autoPageInterval,
+                    chapterIndex: _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0),
+                    totalChapters: provider.chapters.length,
+                    chapterSliderValue: _state.chapterSliderValue,
+                    ttsParagraphIndex: _state.ttsParagraphIndex,
+                    totalParagraphs: _state.paragraphs.length,
+                  ),
+                  callbacks: ReaderControllerCallbacks(
+                    onBack: () {
                       _saveProgress(pos: _getProgress());
-                      _openChapter(target, chapterPosition: 0);
-                    }
-                  },
-                  onShowChapterList: () => _showChapterList(provider),
-                  onShowSettings: () => _showReadingSettingsSheet(provider),
-                  onShowBookmarks: _showBookmarkList,
-                  onSwitchSource: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('换源搜索入口待接入')),
-                    );
-                  },
-                  onApplyReplaceRules: _applyReplaceRules,
-                  onStopTts: _stopTts,
-                  onPauseTts: _pauseTts,
-                  onResumeTts: _resumeTts,
-                  onShowTtsTimer: _showTtsTimerSheet,
-                  onShowTtsSettings: _showTtsSettingsSheet,
-                  onStopAutoPage: _stopAutoPageMode,
-                  onDecreaseAutoPageInterval: () =>
-                      _changeAutoPageInterval(-1),
-                  onIncreaseAutoPageInterval: () =>
-                      _changeAutoPageInterval(1),
+                      Navigator.pop(context);
+                    },
+                    onShowMore: () => _showMorePanel(provider),
+                    onRefresh: _applyReplaceRules,
+                    onToggleBookmark: () => _toggleBookmark(provider),
+                    onStartAutoPage: _startAutoPageMode,
+                    onStartTts: _startTts,
+                    onToggleTheme: _toggleReaderTheme,
+                    onPrevChapter: _goToPreviousChapter,
+                    onNextChapter: _goToNextChapter,
+                    onChapterSliderChanged: (value) {
+                      setState(() => _state.chapterSliderValue = value);
+                    },
+                    onChapterSliderEnd: (value) {
+                      setState(() => _state.chapterSliderValue = null);
+                      final target = value.round();
+                      final ci = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+                      if (target != ci && _token != null) {
+                        _saveProgress(pos: _getProgress());
+                        _openChapter(target, chapterPosition: 0);
+                      }
+                    },
+                    onShowChapterList: () => _showChapterList(provider),
+                    onShowSettings: () => _showReadingSettingsSheet(provider),
+                    onStopTts: _stopTts,
+                    onPauseTts: _pauseTts,
+                    onResumeTts: _resumeTts,
+                    onShowTtsTimer: _showTtsTimerSheet,
+                    onShowTtsSettings: _showTtsSettingsSheet,
+                    onStopAutoPage: _stopAutoPageMode,
+                    onDecreaseAutoPageInterval: () =>
+                        _changeAutoPageInterval(-1),
+                    onIncreaseAutoPageInterval: () =>
+                        _changeAutoPageInterval(1),
+                  ),
                 ),
               ],
               if (_state.autoPageRunning && _state.showAutoPageControls)
@@ -2086,6 +2084,74 @@ class _ReaderPageState extends State<ReaderPage> {
         const SnackBar(content: Text('朗读已按定时停止')),
       );
     });
+  }
+
+  /// 更多面板——低频功能入口
+  void _showMorePanel(ReaderProvider provider) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.bookmark_outline),
+                title: const Text('书签'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _showBookmarkList();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.travel_explore_outlined),
+                title: const Text('换源'),
+                subtitle: Text(
+                  provider.book?.originName ?? '当前书源',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('换源搜索入口待接入')),
+                  );
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.refresh,
+                  color: provider.book?.useReplaceRule == true
+                      ? const Color(0xFF00A88F)
+                      : null,
+                ),
+                title: const Text('净化规则'),
+                subtitle: Text(
+                  provider.book?.useReplaceRule == true ? '已启用' : '未启用',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _applyReplaceRules();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.category_outlined),
+                title: const Text('更改类型'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _showChangeTypeDialog(provider);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _showChangeTypeDialog(ReaderProvider provider) {
