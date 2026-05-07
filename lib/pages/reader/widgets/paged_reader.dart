@@ -25,6 +25,10 @@ class PagedReader extends StatelessWidget {
   final bool showTopBar;
   final bool showBottomBar;
   final bool showPageNumber;
+  final double horizontalPadding;
+  final double topPadding;
+  final double paragraphSpacing;
+  final double firstLineIndent;
 
   const PagedReader({
     Key? key,
@@ -43,6 +47,10 @@ class PagedReader extends StatelessWidget {
     this.showTopBar = true,
     this.showBottomBar = true,
     this.showPageNumber = true,
+    this.horizontalPadding = 24.0,
+    this.topPadding = 18.0,
+    this.paragraphSpacing = 10.0,
+    this.firstLineIndent = 2.0,
   }) : super(key: key);
 
   @override
@@ -72,6 +80,10 @@ class PagedReader extends StatelessWidget {
           showTopBar: showTopBar,
           showBottomBar: showBottomBar,
           showPageNumber: showPageNumber,
+          horizontalPadding: horizontalPadding,
+          topPadding: topPadding,
+          paragraphSpacing: paragraphSpacing,
+          firstLineIndent: firstLineIndent,
         );
       },
     );

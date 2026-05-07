@@ -10,13 +10,14 @@ import 'models.dart';
 /// （后者返回的是 baseline 间距，不包含行框的上下留白）。
 
 class PaginationEngine {
-  /// 页面布局常量
-  static const double horizontalPadding = 24.0;
-  static const double topPadding = 18.0;
-  static const double bottomPadding = 10.0;
-  static const double headerBottomSpacing = 14.0;
-  static const double paragraphSpacing = 10.0;
-  static const double lineSpacing = 2.0;
+  /// 页面布局默认值（不再硬编码，由参数覆盖）
+  static const double defaultHorizontalPadding = 24.0;
+  static const double defaultTopPadding = 18.0;
+  static const double defaultBottomPadding = 10.0;
+  static const double defaultHeaderBottomSpacing = 14.0;
+  static const double defaultParagraphSpacing = 10.0;
+  static const double defaultLineSpacing = 2.0;
+  static const double defaultFirstLineIndent = 2.0;
 
   /// 章节头样式（与 content_renderer.dart 一致）
   static const double headerFontSize = 12.0;
@@ -37,6 +38,12 @@ class PaginationEngine {
     required double safeTop,
     required double safeBottom,
     int targetPosition = 0,
+    double paragraphSpacing = defaultParagraphSpacing,
+    double firstLineIndent = defaultFirstLineIndent,
+    double horizontalPadding = defaultHorizontalPadding,
+    double topPadding = defaultTopPadding,
+    bool showTopBar = true,
+    bool showBottomBar = true,
   }) {
     // 1. 提取段落
     final paragraphs = _extractParagraphs(content, chapterTitle: chapterTitle);
@@ -55,10 +62,13 @@ class PaginationEngine {
     final availableWidth = viewportSize.width - horizontalPadding * 2;
 
     // 章节头高度：12 * 1.2 = 14.4
-    final headerHeight =
-        (chapterTitle?.isNotEmpty == true) ? headerFontSize * headerLineHeight : 0.0;
+    final headerHeight = (showTopBar && chapterTitle?.isNotEmpty == true)
+        ? headerFontSize * headerLineHeight
+        : 0.0;
+    final headerSpacing = (showTopBar && headerHeight > 0) ? defaultHeaderBottomSpacing : 0.0;
     // 页脚高度：11 * 1.2 = 13.2
-    final footerHeight = footerFontSize * footerLineHeight;
+    final footerHeight = showBottomBar ? footerFontSize * footerLineHeight : 0.0;
+    final bottomPadding = showBottomBar ? defaultBottomPadding : 0.0;
 
     final availableHeight = viewportSize.height -
         safeTop -
@@ -66,8 +76,9 @@ class PaginationEngine {
         topPadding -
         bottomPadding -
         headerHeight -
+        headerSpacing -
         footerHeight -
-        headerBottomSpacing;
+        4; // 4px 安全余量
 
     // 3. 逐段落 → 逐行 → 分页
     final pages = <PageSlice>[];
@@ -113,6 +124,7 @@ class PaginationEngine {
         fontSize: fontSize,
         lineHeight: lineHeight,
         maxWidth: availableWidth,
+        firstLineIndent: firstLineIndent,
       );
 
       for (int i = 0; i < lines.length; i++) {
@@ -120,7 +132,7 @@ class PaginationEngine {
         // 行框高度 = fontSize * lineHeight（与 Text widget 渲染一致）
         // 加上行间距：段内 2px，段尾 10px
         final isLastLine = line.isLastLineOfParagraph;
-        final lineMarginBottom = isLastLine ? paragraphSpacing : lineSpacing;
+        final lineMarginBottom = isLastLine ? paragraphSpacing : defaultLineSpacing;
         final lineTotalHeight = line.height + lineMarginBottom;
 
         if (currentLines.isNotEmpty &&
@@ -153,6 +165,7 @@ class PaginationEngine {
     required double fontSize,
     required double lineHeight,
     required double maxWidth,
+    double firstLineIndent = 2.0,
   }) {
     final isTitle = paragraph.isTitle;
     final effectiveFontSize = isTitle ? fontSize + 4 : fontSize;
@@ -161,9 +174,11 @@ class PaginationEngine {
     // 行框高度 = fontSize * lineHeight（与 Text widget 一致）
     final lineBoxHeight = effectiveFontSize * effectiveLineHeight;
 
-    final fullText =
-        isTitle ? paragraph.text : '\u3000\u3000${paragraph.text}';
-    final indentLength = isTitle ? 0 : 2;
+    // 首行缩进：根据 firstLineIndent 生成对应数量的全角空格
+    final indentChars = isTitle ? 0 : firstLineIndent.round();
+    final indentStr = '\u3000' * indentChars;
+    final fullText = isTitle ? paragraph.text : '$indentStr${paragraph.text}';
+    final indentLength = isTitle ? 0 : indentChars;
 
     final painter = TextPainter(
       text: TextSpan(

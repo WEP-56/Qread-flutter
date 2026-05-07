@@ -26,9 +26,13 @@ class ContentRenderer {
     bool showTopBar = true,
     bool showBottomBar = true,
     bool showPageNumber = true,
+    double horizontalPadding = 24.0,
+    double topPadding = 18.0,
+    double paragraphSpacing = 10.0,
+    double firstLineIndent = 2.0,
   }) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 18, 24, 10),
+      padding: EdgeInsets.fromLTRB(horizontalPadding, topPadding, horizontalPadding, showBottomBar ? 10.0 : 0.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -47,6 +51,8 @@ class ContentRenderer {
                       fontSize: fontSize,
                       lineHeight: lineHeight,
                       ttsParagraphIndex: ttsParagraphIndex,
+                      paragraphSpacing: paragraphSpacing,
+                      firstLineIndent: firstLineIndent,
                     ),
                 ],
               ),
@@ -87,6 +93,8 @@ class ContentRenderer {
     required double fontSize,
     required double lineHeight,
     required int ttsParagraphIndex,
+    double paragraphSpacing = 10.0,
+    double firstLineIndent = 2.0,
   }) {
     final isHighlighted = line.paragraphIndex == ttsParagraphIndex;
     final effectiveFontSize = line.isTitle ? fontSize + 4 : fontSize;
@@ -96,11 +104,12 @@ class ContentRenderer {
     final effectiveColor = isHighlighted ? theme.highlight : theme.text;
 
     // 首行缩进
-    final displayText =
-        line.isTitle ? line.text : '${line.isFirstLineOfParagraph ? '\u3000\u3000' : ''}${line.text}';
+    final indentChars = line.isTitle ? 0 : firstLineIndent.round();
+    final indentStr = line.isFirstLineOfParagraph ? '\u3000' * indentChars : '';
+    final displayText = line.isTitle ? line.text : '$indentStr${line.text}';
 
-    // 段落间距：段尾行 margin 10px，段内行 margin 2px
-    final marginBottom = line.isLastLineOfParagraph ? 10.0 : 2.0;
+    // 段落间距：段尾行用 paragraphSpacing，段内行 2px
+    final marginBottom = line.isLastLineOfParagraph ? paragraphSpacing : 2.0;
 
     return Container(
       margin: EdgeInsets.only(bottom: marginBottom),

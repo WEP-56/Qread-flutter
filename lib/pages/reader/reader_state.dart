@@ -31,6 +31,12 @@ class ReaderState with ChangeNotifier {
   bool showBottomBar = true;    // 底部区域（时间/电量/页码）
   bool showTopBar = true;       // 顶部区域（章节序号/章节名）
 
+  // ---- 间距设置 ----
+  double paragraphSpacing = 10.0; // 段间距 (px)
+  double firstLineIndent = 2.0;   // 首行缩进 (字符数)
+  double horizontalPadding = 24.0; // 左右边距 (px)
+  double topPadding = 18.0;       // 上方边距 (px)
+
   // ---- 章节状态 ----
   String displayedContent = '';
   int chapterRequestSerial = 0;
