@@ -36,6 +36,10 @@ class StorageService {
   Future<void> setReaderChapterCacheCount(int count) =>
       _prefs.setInt(_keyReaderChapterCacheCount, count);
 
+  String? readString(String key) => _prefs.getString(key);
+  Future<void> setString(String key, String value) =>
+      _prefs.setString(key, value);
+
   bool get isLoggedIn => token != null && token!.isNotEmpty;
 
   Future<void> clear() => _prefs.clear();
