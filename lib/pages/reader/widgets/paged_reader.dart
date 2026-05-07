@@ -718,13 +718,14 @@ class _SimulationTurnPainter extends CustomPainter {
       ..lineTo(geometry.touchPoint.dx, geometry.touchPoint.dy)
       ..close();
 
-    final left = geometry.isTopRight
+    final shadowExtendsLeft = geometry.isTopRight || geometry.isBottomLeft;
+    final left = shadowExtendsLeft
         ? geometry.controlPoint1.dx - shadowWidth / 2
         : geometry.controlPoint1.dx;
-    final right = geometry.isTopRight
+    final right = shadowExtendsLeft
         ? geometry.controlPoint1.dx
         : geometry.controlPoint1.dx + shadowWidth / 2;
-    final gradient = geometry.isTopRight
+    final gradient = shadowExtendsLeft
         ? const LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
@@ -774,15 +775,15 @@ class _SimulationTurnPainter extends CustomPainter {
 
     final rect = Rect.fromLTRB(
       geometry.controlPoint2.dx,
-      geometry.isTopRight
+      geometry.isTop
           ? geometry.controlPoint2.dy - shadowWidth / 2
           : geometry.controlPoint2.dy,
       geometry.controlPoint2.dx + geometry.maxLength,
-      geometry.isTopRight
+      geometry.isTop
           ? geometry.controlPoint2.dy
           : geometry.controlPoint2.dy + shadowWidth / 2,
     );
-    final gradient = geometry.isTopRight
+    final gradient = geometry.isTop
         ? const LinearGradient(
             begin: Alignment.bottomCenter,
             end: Alignment.topCenter,
@@ -847,8 +848,9 @@ class _SimulationTurnPainter extends CustomPainter {
     final f2 = (midJh - geometry.controlPoint2.dy).abs();
     final width = math.min(f1, f2) + 1;
 
-    final left = geometry.isTopRight ? 30.0 : -(width + 1);
-    final right = geometry.isTopRight ? width + 1 : -30.0;
+    final shadowExtendsRight = geometry.isRtAndLb;
+    final left = shadowExtendsRight ? 30.0 : -(width + 1);
+    final right = shadowExtendsRight ? width + 1 : -30.0;
 
     canvas.save();
     canvas.clipPath(geometry.areaCPath);
@@ -869,11 +871,18 @@ class _SimulationTurnPainter extends CustomPainter {
     canvas.drawRect(
       rect,
       Paint()
-        ..shader = const LinearGradient(
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-          colors: [Color(0x00333333), Color(0x55333333)],
-        ).createShader(rect)
+        ..shader = (shadowExtendsRight
+                ? const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [Color(0x00333333), Color(0x55333333)],
+                  )
+                : const LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [Color(0x55333333), Color(0x00333333)],
+                  ))
+            .createShader(rect)
         ..isAntiAlias = true,
     );
     canvas.restore();
@@ -910,6 +919,8 @@ class _SimulationTurnGeometry {
   final double rightShadowWidth;
   final double viewportHeight;
   final bool isTopRight;
+  final bool isBottomLeft;
+  final bool isTop;
 
   const _SimulationTurnGeometry({
     required this.touchPoint,
@@ -934,6 +945,8 @@ class _SimulationTurnGeometry {
     required this.rightShadowWidth,
     required this.viewportHeight,
     required this.isTopRight,
+    required this.isBottomLeft,
+    required this.isTop,
   });
 
   static _SimulationTurnGeometry compute({
@@ -944,8 +957,11 @@ class _SimulationTurnGeometry {
     var touch = touchPoint;
     final cornerX = fromNext ? size.width : 0.0;
     final cornerY = touch.dy <= size.height / 2 ? 0.0 : size.height;
+    final isTop = cornerY == 0.0;
     final isRtAndLb = (cornerX == 0 && cornerY == size.height) ||
         (cornerX == size.width && cornerY == 0);
+    final isTopRight = cornerX == size.width && cornerY == 0;
+    final isBottomLeft = cornerX == 0 && cornerY == size.height;
 
     Offset middle = Offset((touch.dx + cornerX) / 2, (touch.dy + cornerY) / 2);
     Offset controlPoint1 = Offset(
@@ -1174,7 +1190,9 @@ class _SimulationTurnGeometry {
       leftShadowWidth: leftShadowWidth,
       rightShadowWidth: rightShadowWidth,
       viewportHeight: size.height,
-      isTopRight: cornerX == size.width && cornerY == 0,
+      isTopRight: isTopRight,
+      isBottomLeft: isBottomLeft,
+      isTop: isTop,
     );
   }
 

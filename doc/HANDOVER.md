@@ -1,364 +1,297 @@
-# Qread 项目接手文档
+# Qread Handover
 
-> 供新会话 AI 快速接手当前 Flutter 端状态与下一步开发重点
+## 当前结论
 
-## 项目目标
+本轮工作已完成阅读器翻页与背景这一阶段的关键修复，当前可以结束这个主题，下一会话转入整个应用的 GUI 风格统一与视觉打磨。
 
-基于后端项目 `Qread-source`（Kotlin/Solon）与开源 Web 客户端，开发 **Flutter 客户端**（Windows + Android），尽可能复刻 Legado/Qread 的实际行为。
+当前 Flutter 仓库：
 
-当前主目标已经从“跑通基本链路”切换为：
+- `D:\Qread`
 
-1. **书源全量适配**
-2. **订阅源全量适配**
-3. **阅读器使用打磨**
+本轮新增参考仓库：
 
-这里的“全量适配”重点不是静态页面，而是：
+- `D:\Qread\_refs\BookPage`
+- `D:\Qread\_refs\flutter_novel`
+- `D:\Qread\_refs\page_turn_animation`
+- `D:\Qread\_refs\page_turn`
 
-- `loginUi`
-- `loginUrl`
-- 源变量
-- 源动作
-- 调试页
-- WebView 行为
-- 一键导入
-- 表单式源编辑器
+## 已完成内容
 
-## 当前仓库与参考代码
+### 1. 阅读器翻页模式收敛
 
-- Flutter 仓库根目录：`D:\Qread`
-- 后端 / Web 参考仓库：`D:\Qread\Qread-source`
-- 本地克隆的 Legado 参考源码：`D:\Qread\_refs\legado`
+现在只保留 5 种模式：
 
-> 后续涉及书源/订阅源编辑、登录、变量、动作、调试时，**优先直接参考 `_refs/legado`**，不要只靠记忆或搜索网页资料。
+- `覆盖`
+- `滑动`
+- `仿真`
+- `滚动`
+- `无`
 
-## 当前状态概览
+旧模式名已做兼容映射，避免历史配置读崩：
 
-### 基础链路
+- `book -> simulation`
+- `horizontal -> slide`
+- `vertical -> scroll`
 
-以下链路已经基本可用：
+相关文件：
 
-- 登录
+- `D:\Qread\lib\pages\reader\reader_state.dart`
+- `D:\Qread\lib\pages\reader\reader_page.dart`
+
+### 2. 自定义背景修复
+
+之前自定义背景不生效，原因是 `custom_xxx` 主题名保存的是十六进制，但读取时按十进制解析，导致回退。
+
+现已修复：
+
+- 自定义背景可正常生效
+- 可正常持久化
+- 重进阅读页不会丢
+
+相关文件：
+
+- `D:\Qread\lib\pages\reader\widgets\reader_theme.dart`
+
+### 3. 仿真翻页已重写为几何卷页
+
+最开始的 Flutter 实现只是整块 `Transform`，用户明确不接受。
+
+最终采用的是：
+
+- 参考 `BookPage` 的几何模型
+- 参考 `flutter_novel` 的 Flutter 组织方式
+- 当前页先截图
+- 仿真翻页时基于触摸点与角点计算控制点
+- 按 A/B/C 区域绘制
+- 背页通过反射矩阵镜像当前页位图
+- 目标页作为底层真实内容显示
+
+核心算法已经不是“整块反转”，而是真正卷页。
+
+相关文件：
+
+- `D:\Qread\lib\pages\reader\widgets\paged_reader.dart`
+
+### 4. 四角阴影问题已修复
+
+曾出现的问题：
+
+- 右上角效果正常
+- 右下 / 左上 / 左下有明显瑕疵
+- B 区阴影过宽，出现一整条多余阴影块
+- 阴影方向只对“右上角”成立，其他角错误
+
+已完成修正：
+
+- A 区左右阴影分开处理
+- C 区阴影裁剪到 `pathC`
+- B 区阴影裁剪到 `areaBPath`
+- 阴影方向不再只按 `isTopRight`，而是按四角条件分支
+- B 区阴影透明度已降低
+
+当前状态：
+
+- 用户确认“完美，修复了”
+
+### 5. 阅读页底部黄黑 overflow 修复
+
+之前经常报：
+
+- `A RenderFlex overflowed by ... pixels on the bottom`
+
+并在页面底部出现黄黑斜纹提示。
+
+已处理方式：
+
+- 正文区改为可裁剪容器
+- 不再直接让正文 `Column` 在固定高度下硬撑
+
+相关文件：
+
+- `D:\Qread\lib\pages\reader\widgets\content_renderer.dart`
+
+## 本轮主要改动文件
+
+- `D:\Qread\lib\pages\reader\reader_state.dart`
+- `D:\Qread\lib\pages\reader\reader_page.dart`
+- `D:\Qread\lib\pages\reader\widgets\paged_reader.dart`
+- `D:\Qread\lib\pages\reader\widgets\reader_theme.dart`
+- `D:\Qread\lib\pages\reader\widgets\content_renderer.dart`
+
+## 当前验证状态
+
+已验证：
+
+- `flutter analyze`
+  - 没有新增 error
+  - 仍有一些旧的 info / warning，主要在 `reader_page.dart`
+- `flutter build windows --debug`
+  - 代码本身可通过
+
+注意：
+
+- 最后一次 Windows 构建失败不是代码问题，而是 `qread.exe` 正在运行，锁住了 `WebView2Loader.dll`
+- 如果下个会话还要构建 Windows，请先关闭正在运行的 `qread`
+
+## 当前阅读器实现说明
+
+### 模式实现现状
+
+- `覆盖`
+  - 手势驱动
+  - 当前页覆盖滑走
+
+- `滑动`
+  - 普通横向分页
+  - 走 `PageView`
+
+- `仿真`
+  - 手势驱动
+  - 当前页截图卷起
+  - 背页镜像
+  - A/B/C 分区阴影
+
+- `滚动`
+  - 整章滚动
+
+- `无`
+  - 手势驱动
+  - 不做动画，直接切页
+
+### 仿真翻页核心入口
+
+重点看这里：
+
+- `D:\Qread\lib\pages\reader\widgets\paged_reader.dart`
+
+里面最重要的是：
+
+- `PagedReader`
+- `_SimulationTurnPainter`
+- `_SimulationTurnGeometry`
+
+## 参考实现来源
+
+这轮真正有用的参考不是 Legado 本体，而是：
+
+### 1. BookPage
+
+路径：
+
+- `D:\Qread\_refs\BookPage\src\main\java\com\anlia\pageturn\view\BookPageView.java`
+
+作用：
+
+- 几何数学最清晰
+- `calcPointsXY`
+- `getIntersectionPoint`
+- A/B/C 区路径
+- 背页镜像矩阵
+- 阴影的旋转中心与裁剪关系
+
+### 2. flutter_novel
+
+路径：
+
+- `D:\Qread\_refs\flutter_novel\lib\app\novel\widget\reader\content\helper\animation\animation_page_simulation_turn.dart`
+- `D:\Qread\_refs\flutter_novel\lib\app\novel\widget\reader\content\helper\animation\animation_page_cover.dart`
+
+作用：
+
+- Flutter 里如何组织手势、动画控制器、确认/取消翻页
+- 如何把几何卷页嵌进阅读器状态流
+
+## 下个会话目标
+
+下个会话不要再继续做阅读器翻页。这个阶段已经够用了。
+
+下一步主目标：
+
+## GUI 风格统一与视觉打磨
+
+建议重点：
+
+### 1. 统一全局视觉语言
+
+先做一轮审视：
+
+- 书架
 - 发现
 - 搜索
-- 加入书架
-- 阅读
-- 书源管理基本修改
-
-### 已经做完或基本可用的模块
-
-- 书架页
-- 发现页
-- 搜索页
-- 登录 / 注册页
-- 我的页
-- 阅读器基础页
-- 书源管理页（已不再是占位）
-- RSS 订阅页
-- RSS 管理页（基础版）
-- RSS 文章列表 / 详情页（基础版）
+- 阅读设置
+- 个人页
+- 书源/RSS 管理页
 
-### 已完成的重要结构升级
+现在整体问题大概率会是：
 
-1. **Windows WebView 已补齐**
-   - 之前 Windows 没有默认 WebView 实现，`type=1` 订阅源会直接报错。
-   - 现在新增了 `webview_windows`，并封装了统一组件：
-     - `lib/widgets/adaptive_webview.dart`
-   - Windows 用 `webview_windows`
-   - 其它平台暂时仍走 `webview_flutter`
+- 控件风格不统一
+- 边距与层级不统一
+- 字号/圆角/分割线风格混杂
+- 顶栏、卡片、弹窗、胶囊按钮语言不一致
 
-2. **书源 / 订阅源结构化编辑器已建立**
-   - 不再只依赖 JSON 文本框
-   - 已按 Legado 的 tab 结构拆成 Flutter 页
-   - 书源编辑：
-     - `lib/pages/source/book_source_editor_page.dart`
-   - 订阅源编辑：
-     - `lib/pages/rss/rss_source_editor_page.dart`
-   - 通用 JSON path 读写：
-     - `lib/pages/source/source_editor_support.dart`
-
-3. **一键导入链路已接入**
-   - 支持拦截：
-     - `yuedu://booksource/importonline?src=...`
-     - `legado://import/{path}?src=...`
-   - 导入逻辑在：
-     - `lib/pages/rss/rss_web_page.dart`
-     - `lib/widgets/adaptive_webview.dart`
-
-4. **API body 编码问题已修正**
-   - 之前很多 `@Body List<String>` / `@Body Object` 接口被错误按表单方式发出
-   - 现已统一补 `application/json`
-   - 影响范围：
-     - 批量书源接口
-     - 批量 RSS 接口
-     - `getRssSourcejson`
-     - `getbookSourcejson`
-     - `editRssSources`
-
-## 当前仍未完成的核心问题
-
-### 1. 登录 UI / 登录动作还没真正适配
-
-这是当前最关键的缺口。
-
-很多源的能力不在普通网页 HTML，而在源 JSON 内部定义：
-
-- `loginUi`
-- `loginUrl`
-- `loginCheckJs`
-- `variableComment`
-- `shouldOverrideUrlLoading`
-
-目前状态：
-
-- 可以打开网页
-- 可以拦截部分一键导入协议
-- **不能完整渲染 Legado 风格的 `loginUi` 按钮 / 输入表单 / 动作执行**
-
-例如：
-
-- 切换起始页
-- 登录
-- 清理 cookie
-- 源变量编辑
-- 源动作执行
-
-这些都还是待做。
-
-### 2. 调试页还没做
-
-Legado 原版有非常重要的调试页：
-
-- 调试搜索
-- 调试发现
-- 调试详情
-- 调试目录
-- 调试正文
+建议先确定一套全局规则：
 
-这对书源适配是核心工具，Flutter 端目前还没有。
+- 颜色体系
+- 圆角体系
+- 间距体系
+- 标题/正文/辅助文案字号层级
+- 卡片与列表的边框/阴影规则
+- 底部弹窗样式
 
-### 3. 结构化编辑器还是第一版
+### 2. 阅读器设置面板视觉整理
 
-目前编辑器已经有 tab + 表单，但还是“基础字段表单化”，还没到 Legado 原版成熟度。
+虽然功能已经可用了，但视觉层还可以继续统一：
 
-目前缺：
+- 翻页模式胶囊
+- 背景色圆点
+- 间距设置入口
+- 更多设置入口
 
-- 更多 checkbox / dropdown / 特殊控件
-- 字段级帮助
-- 登录入口
-- 变量入口
-- 调试入口
-- 粘贴 / QR / 分享 / 导入辅助
-- URL 选项插入器
+这块现在很适合作为 GUI 风格重构的第一块样板。
 
-### 4. 阅读器仍需继续打磨
+### 3. 书架与发现页优先级最高
 
-已修复一个明显错误：
+因为这是最常见入口，最能决定产品第一印象。
 
-- 漫画类型应是 `type == 2`
+建议优先看：
 
-但仍缺：
+- `D:\Qread\lib\pages\bookshelf\bookshelf_page.dart`
+- `D:\Qread\lib\pages\discover\discover_page.dart`
+- `D:\Qread\lib\widgets\book_card.dart`
 
-- 书签
-- 阅读设置完整化
-- HTML / 漫画 / 有声的进一步细分
-- 源变量 / WebView 内容对阅读器的联动
+### 4. 先提炼，再改页面
 
-## 本会话新增 / 修改的重点文件
+建议不要直接一页页硬改。
 
-### 新增
+先抽：
 
-- `lib/widgets/adaptive_webview.dart`
-- `lib/pages/source/source_editor_support.dart`
-- `lib/pages/source/book_source_editor_page.dart`
-- `lib/pages/rss/rss_source_editor_page.dart`
-- `lib/pages/rss/rss_web_page.dart`
-- `lib/pages/rss/rss_article_list_page.dart`
-- `lib/pages/rss/rss_article_detail_page.dart`
-- `lib/providers/rss_manage_provider.dart`
-- `D:\Qread\_refs\legado`（本地参考仓库）
+- 统一按钮
+- 统一 section 标题
+- 统一卡片容器
+- 统一底部弹窗样式
+- 统一标签/胶囊样式
 
-### 关键修改
+再把页面换上去，成本最低。
 
-- `lib/services/api_service.dart`
-- `lib/pages/source/source_manage_page.dart`
-- `lib/pages/rss/rss_source_page.dart`
-- `lib/config/routes.dart`
-- `lib/main.dart`
-- `lib/pages/reader/reader_page.dart`
-- `lib/widgets/rss_source_card.dart`
-- `lib/providers/source_manage_provider.dart`
+## 不建议下个会话做的事
 
-## 当前 Provider / 页面状态
+- 不要继续大改翻页数学
+- 不要再引入新的翻页第三方包
+- 不要同时推进“GUI 重构”和“书源登录适配”两条大线
 
-### Provider
+建议先把 GUI 做整洁，再开下一轮处理更复杂的功能适配。
 
-- `UserProvider`
-- `BookshelfProvider`
-- `DiscoverProvider`
-- `ReaderProvider`
-- `RssProvider`
-- `SourceManageProvider`
-- `RssManageProvider`
+## 交接提示
 
-### 页面
+如果新会话要先确认当前成果，建议优先人工验证：
 
-- `BookshelfPage`
-- `DiscoverPage`
-- `ExploreBooksPage`
-- `SearchPage`
-- `ReaderPage`
-- `ProfilePage`
-- `RssPage`
-- `RssArticleListPage`
-- `RssArticleDetailPage`
-- `RssSourcePage`
-- `SourceManagePage`
-- `BookSourceEditorPage`
-- `RssSourceEditorPage`
+1. 打开阅读页
+2. 测试五种翻页模式
+3. 检查自定义背景
+4. 检查页面底部是否还有黄黑 overflow 条
+5. 然后再开始 GUI 统一
 
-## 与 Legado 对照时的关键入口
+如果要重新构建 Windows：
 
-### 登录 UI
-
-- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\login\SourceLoginActivity.kt`
-- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\login\SourceLoginViewModel.kt`
-
-### 书源编辑
-
-- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\book\source\edit\BookSourceEditActivity.kt`
-
-### 订阅源编辑
-
-- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\rss\source\edit\RssSourceEditActivity.kt`
-
-### 书源管理
-
-- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\book\source\manage`
-
-### RSS 管理
-
-- `D:\Qread\_refs\legado\app\src\main\java\io\legado\app\ui\rss\source\manage`
-
-## API 关键注意点
-
-### 通用
-
-- API 基础路径：`/api/{v}`，当前 `v=5`
-- 认证方式：`accessToken` **查询参数**
-- 不是 Bearer token
-
-### 分页缓存接口
-
-- `getXxxPage` 先写缓存并返回 `md5 + page`
-- `getXxxNew` 再读缓存
-- 缓存 TTL 约 60 秒
-- 过期时 `New` 接口可能返回空 / false，需要 fallback
-
-### 书源 / RSS 旧接口 fallback
-
-- `getBookSources` 返回 `errorMsg` 带权限语义：
-  - `"ok"` = 可编辑
-  - `"no"` = 只读
-- `getRssSourcess` 返回：
-  - `data.sources`
-  - `data.can`
-
-### Body 编码
-
-这类接口必须特别注意：
-
-- `saveBookSources`：body 是 **纯文本 JSON**
-- `saveBookSource`：body 是 **纯文本 JSON**
-- `saveRssSources`：`source` / `urls` 是 query/form 参数
-- 很多批量接口：body 是 **JSON 数组**
-
-如果又看到：
-
-- 后端返回空数组
-- 后端 `400`
-- 明明接口通了但数据为空
-
-优先检查 `content-type` 和 body 序列化方式。
-
-## 当前依赖
-
-```yaml
-provider: ^6.0.3
-dio: ^4.0.6
-shared_preferences: ^2.0.15
-cached_network_image: ^3.2.1
-pull_to_refresh: ^2.0.0
-flutter_html: ^3.0.0-alpha.3
-webview_flutter: ^3.0.4
-webview_windows: ^0.4.0
-url_launcher: ^6.1.3
-path_provider: ^2.0.11
-sqflite: ^2.0.2+1
-json_annotation: ^4.5.0
-```
-
-## 当前已知问题 / 风险
-
-1. **源码中文文案仍有部分历史乱码**
-   - 不是终端显示问题，而是部分源码字符串本身已经坏了
-   - 新增页面尽量保持正常中文，旧页面后续逐步清理
-
-2. **Windows WebView 切换行为仍需继续测试**
-   - 当前已把 popup policy 改成 `sameWindow`
-   - 能解决一部分“点击二级页没反应”
-   - 但更复杂的站点跳转仍需继续观察
-
-3. **结构化编辑页还只是第一版**
-   - 已可编辑主要字段
-   - 但距离 Legado 原版还差很多增强行为
-
-4. **`loginUi` / `loginUrl` 才是全量适配主战场**
-   - 这部分还没真正开工完成
-
-## 下个会话建议顺序
-
-### 第一优先级
-
-1. **适配 `loginUi`**
-   - 按 Legado 的 RowUi 结构渲染按钮 / 输入项
-   - 支持点击动作
-   - 支持保存登录信息
-
-2. **适配 `loginUrl` / 动作执行**
-   - 书源
-   - 订阅源
-   - 源变量
-   - 清理 cookie / cache
-
-3. **做调试页**
-   - 调试搜索
-   - 调试发现
-   - 调试详情
-   - 调试目录
-   - 调试正文
-
-### 第二优先级
-
-4. **继续增强结构化编辑器**
-   - menu
-   - 登录入口
-   - 变量入口
-   - 调试入口
-   - 导入 / 导出 / 粘贴辅助
-
-5. **阅读器继续打磨**
-   - 书签
-   - 设置
-   - 内容模式细化
-
-## 验证基线
-
-截至本次交接：
-
-- `flutter analyze` 无新增 error（仍有一些历史 warning/info）
-- `flutter test` 通过
-
-如果下个会话引入了新的 Windows 插件或 WebView 行为，记得：
-
-- 不要只靠热重载验证
-- 需要完整重启 Windows 端应用
+1. 先关闭正在运行的 `qread.exe`
+2. 再执行 `flutter build windows --debug`
