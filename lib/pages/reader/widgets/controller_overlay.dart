@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../providers/reader_provider.dart';
 import '../../../services/tts_service.dart';
 
 /// 阅读器控制面板覆盖层
@@ -10,7 +9,6 @@ import '../../../services/tts_service.dart';
 /// 等方法集中到此组件。
 
 class ControllerOverlay extends StatelessWidget {
-  final ReaderProvider provider;
   final String bookName;
   final String chapterTitle;
   final String sourceName;
@@ -57,7 +55,6 @@ class ControllerOverlay extends StatelessWidget {
 
   const ControllerOverlay({
     Key? key,
-    required this.provider,
     required this.bookName,
     required this.chapterTitle,
     required this.sourceName,

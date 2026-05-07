@@ -834,7 +834,6 @@ class _ReaderPageState extends State<ReaderPage> {
                   ),
                 ),
                 ControllerOverlay(
-                  provider: provider,
                   bookName: provider.book?.name ?? '',
                   chapterTitle: _displayedChapter(provider)?.title ?? '',
                   sourceName:
