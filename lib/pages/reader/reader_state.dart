@@ -6,11 +6,55 @@ import 'widgets/controller_overlay.dart';
 
 /// 翻页动画类型
 enum PageAnimType {
-  cover,      // 覆盖
-  slide,      // 滑动/左右
-  simulation, // 仿真/翻书
-  scroll,     // 滚动/上下
-  none,       // 无动画
+  cover('cover'), // 覆盖
+  slide('slide'), // 滑动
+  simulation('simulation'), // 仿真
+  scroll('scroll'), // 滚动
+  none('none'); // 无
+
+  const PageAnimType(this.id);
+
+  final String id;
+
+  bool get usesScrollReader => this == PageAnimType.scroll;
+
+  bool get instantTurn => this == PageAnimType.none;
+
+  Axis get axis => Axis.horizontal;
+
+  bool get disableUserScroll => this == PageAnimType.none;
+
+  static PageAnimType fromId(String? id) {
+    switch (id) {
+      case 'book':
+        return PageAnimType.simulation;
+      case 'horizontal':
+        return PageAnimType.slide;
+      case 'vertical':
+        return PageAnimType.scroll;
+    }
+    for (final type in PageAnimType.values) {
+      if (type.id == id) return type;
+    }
+    return PageAnimType.cover;
+  }
+
+  static PageAnimType fromLegacyIndex(int index) {
+    switch (index) {
+      case 0:
+        return PageAnimType.cover;
+      case 1:
+        return PageAnimType.slide;
+      case 2:
+        return PageAnimType.simulation;
+      case 3:
+        return PageAnimType.scroll;
+      case 4:
+        return PageAnimType.none;
+      default:
+        return PageAnimType.cover;
+    }
+  }
 }
 
 /// 阅读器核心状态
@@ -35,17 +79,17 @@ class ReaderState with ChangeNotifier {
   PageAnimType pageAnimType = PageAnimType.cover;
 
   // ---- 更多设置（默认值） ----
-  bool screenWakelock = true;   // 屏幕常亮
-  bool showPageNumber = true;   // 显示页码
-  bool volumeKeyFlip = false;   // 音量键翻页
-  bool showBottomBar = true;    // 底部区域（时间/电量/页码）
-  bool showTopBar = true;       // 顶部区域（章节序号/章节名）
+  bool screenWakelock = true; // 屏幕常亮
+  bool showPageNumber = true; // 显示页码
+  bool volumeKeyFlip = false; // 音量键翻页
+  bool showBottomBar = true; // 底部区域（时间/电量/页码）
+  bool showTopBar = true; // 顶部区域（章节序号/章节名）
 
   // ---- 间距设置 ----
   double paragraphSpacing = 10.0; // 段间距 (px)
-  double firstLineIndent = 2.0;   // 首行缩进 (字符数)
+  double firstLineIndent = 2.0; // 首行缩进 (字符数)
   double horizontalPadding = 24.0; // 左右边距 (px)
-  double topPadding = 18.0;       // 上方边距 (px)
+  double topPadding = 18.0; // 上方边距 (px)
 
   // ---- 章节状态 ----
   String displayedContent = '';
@@ -104,6 +148,13 @@ class ReaderState with ChangeNotifier {
 
   ReaderTheme get currentTheme => ReaderTheme.byName(theme);
 
+  bool get isScrollMode => isComic || pageAnimType.usesScrollReader;
+
+  void applyPageAnimType(PageAnimType type) {
+    pageAnimType = type;
+    pageMode = type.usesScrollReader ? 'scroll' : 'paged';
+  }
+
   int displayedChapterIndex(int bookDurChapterIndex) {
     if (laidOutChapterIndex >= 0) return laidOutChapterIndex;
     return bookDurChapterIndex;
@@ -128,7 +179,8 @@ class ReaderState with ChangeNotifier {
   /// 3. 如果正在请求的章节与已排版章节相同 → 使用当前 chapterPosition
   /// 4. 如果请求的章节与 book 保存的章节相同 → 使用保存的位置
   /// 5. 默认 → 0（首页）
-  int resolveTargetChapterPosition(int bookDurChapterIndex, int? bookDurChapterPos) {
+  int resolveTargetChapterPosition(
+      int bookDurChapterIndex, int? bookDurChapterPos) {
     // 最高优先级：跳到末尾
     if (pendingOpenChapterAtEnd) {
       return 1 << 30;
@@ -160,7 +212,7 @@ class ReaderState with ChangeNotifier {
   }
 
   String pageIndicatorLabel() {
-    if (isComic || pageMode == 'scroll') {
+    if (isScrollMode) {
       final total = paragraphs.isEmpty ? 1 : paragraphs.length;
       return '1/$total';
     }

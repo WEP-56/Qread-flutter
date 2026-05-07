@@ -46,6 +46,7 @@ class _ReaderPageState extends State<ReaderPage> {
   static const _keyPageAnimType = 'reader_page_anim_type';
 
   late PageController _pageController;
+  final PagedReaderController _pagedReaderController = PagedReaderController();
   final ScrollController _comicScrollController = ScrollController();
   final ScrollController _novelScrollController = ScrollController();
   final TtsService _tts = TtsService();
@@ -88,6 +89,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _comicScrollController.dispose();
     _novelScrollController.dispose();
     _pageController.dispose();
+    _pagedReaderController.dispose();
     _tts.removeListener(_onTtsStateChanged);
     _tts.stop();
     _saveProgressSync();
@@ -107,8 +109,7 @@ class _ReaderPageState extends State<ReaderPage> {
       _state.autoNext = prefs.getBool(_keyAutoNext) ?? true;
       _state.theme = prefs.getString(_keyTheme) ?? 'light';
       _state.pageMode = prefs.getString(_keyPageMode) ?? 'paged';
-      _state.autoPageInterval =
-          prefs.getDouble(_keyAutoPageInterval) ?? 12.0;
+      _state.autoPageInterval = prefs.getDouble(_keyAutoPageInterval) ?? 12.0;
       _state.screenWakelock = prefs.getBool(_keyScreenWakelock) ?? true;
       _state.showPageNumber = prefs.getBool(_keyShowPageNumber) ?? true;
       _state.volumeKeyFlip = prefs.getBool(_keyVolumeKeyFlip) ?? false;
@@ -118,8 +119,16 @@ class _ReaderPageState extends State<ReaderPage> {
       _state.firstLineIndent = prefs.getDouble(_keyFirstLineIndent) ?? 2.0;
       _state.horizontalPadding = prefs.getDouble(_keyHorizontalPadding) ?? 24.0;
       _state.topPadding = prefs.getDouble(_keyTopPadding) ?? 18.0;
-      final animIdx = prefs.getInt(_keyPageAnimType) ?? 0;
-      _state.pageAnimType = PageAnimType.values[animIdx.clamp(0, PageAnimType.values.length - 1)];
+      final rawAnimType = prefs.get(_keyPageAnimType);
+      if (rawAnimType is String) {
+        _state.applyPageAnimType(PageAnimType.fromId(rawAnimType));
+      } else if (rawAnimType is int) {
+        _state.applyPageAnimType(PageAnimType.fromLegacyIndex(rawAnimType));
+      } else if (_state.pageMode == 'scroll') {
+        _state.applyPageAnimType(PageAnimType.scroll);
+      } else {
+        _state.applyPageAnimType(PageAnimType.cover);
+      }
     });
   }
 
@@ -129,7 +138,10 @@ class _ReaderPageState extends State<ReaderPage> {
     await prefs.setDouble(_keyLineHeight, _state.lineHeight);
     await prefs.setBool(_keyAutoNext, _state.autoNext);
     await prefs.setString(_keyTheme, _state.theme);
-    await prefs.setString(_keyPageMode, _state.pageMode);
+    await prefs.setString(
+      _keyPageMode,
+      _state.pageAnimType.usesScrollReader ? 'scroll' : 'paged',
+    );
     await prefs.setDouble(_keyAutoPageInterval, _state.autoPageInterval);
     await prefs.setBool(_keyScreenWakelock, _state.screenWakelock);
     await prefs.setBool(_keyShowPageNumber, _state.showPageNumber);
@@ -140,7 +152,7 @@ class _ReaderPageState extends State<ReaderPage> {
     await prefs.setDouble(_keyFirstLineIndent, _state.firstLineIndent);
     await prefs.setDouble(_keyHorizontalPadding, _state.horizontalPadding);
     await prefs.setDouble(_keyTopPadding, _state.topPadding);
-    await prefs.setInt(_keyPageAnimType, _state.pageAnimType.index);
+    await prefs.setString(_keyPageAnimType, _state.pageAnimType.id);
   }
 
   // ============================================================
@@ -270,7 +282,7 @@ class _ReaderPageState extends State<ReaderPage> {
       if (max <= 0) return 0.0;
       return (_comicScrollController.offset / max).clamp(0.0, 1.0);
     }
-    if (_state.pageMode == 'scroll') {
+    if (_state.pageAnimType.usesScrollReader) {
       if (!_novelScrollController.hasClients) return 0.0;
       final max = _novelScrollController.position.maxScrollExtent;
       if (max <= 0) return 0.0;
@@ -293,7 +305,8 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   Chapter? _displayedChapter(ReaderProvider provider) {
-    final index = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+    final index =
+        _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
     if (index < 0 || index >= provider.chapters.length) return null;
     return provider.chapters[index];
   }
@@ -322,7 +335,8 @@ class _ReaderPageState extends State<ReaderPage> {
     if (_token == null) return;
     final provider = context.read<ReaderProvider>();
     final chapter = _displayedChapter(provider);
-    final chapterIndex = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+    final chapterIndex =
+        _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
     final savePos = pos ?? _getProgress();
 
     // 保存到远端
@@ -424,19 +438,17 @@ class _ReaderPageState extends State<ReaderPage> {
     }
 
     // 解析目标位置
-    final targetPosition =
-        _state.resolveTargetChapterPosition(
-          provider.book?.durChapterIndex ?? 0,
-          provider.book?.durChapterPos?.round(),
-        );
+    final targetPosition = _state.resolveTargetChapterPosition(
+      provider.book?.durChapterIndex ?? 0,
+      provider.book?.durChapterPos?.round(),
+    );
 
     // 用新排版结果计算目标页码
     final targetPage = _paginationEngine
         .pageIndexForPosition(layout.pages, targetPosition)
         .clamp(0, layout.pages.length - 1);
-    final normalizedPosition = layout.pages.isEmpty
-        ? 0
-        : layout.pages[targetPage].startPosition;
+    final normalizedPosition =
+        layout.pages.isEmpty ? 0 : layout.pages[targetPage].startPosition;
 
     // 先创建新 PageController，再 setState
     final oldController = _pageController;
@@ -501,8 +513,9 @@ class _ReaderPageState extends State<ReaderPage> {
     int targetPosition = 0,
   }) {
     final size = _state.pagedViewportSize ?? MediaQuery.of(context).size;
-    final safeTop =
-        _state.pagedViewportSize == null ? MediaQuery.of(context).padding.top : 0.0;
+    final safeTop = _state.pagedViewportSize == null
+        ? MediaQuery.of(context).padding.top
+        : 0.0;
     final safeBottom = _state.pagedViewportSize == null
         ? MediaQuery.of(context).padding.bottom
         : 0.0;
@@ -541,7 +554,6 @@ class _ReaderPageState extends State<ReaderPage> {
     _state.layoutCache[cacheKey] = layout;
     return layout;
   }
-
 
   Future<void> _prefetchNextChapter(String token, int chapterIndex) async {
     final provider = context.read<ReaderProvider>();
@@ -615,13 +627,14 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _handleTap(TapUpDetails details, ReaderProvider provider) {
     if (_state.autoPageRunning) {
-      setState(() => _state.showAutoPageControls = !_state.showAutoPageControls);
+      setState(
+          () => _state.showAutoPageControls = !_state.showAutoPageControls);
       return;
     }
 
     final width = MediaQuery.of(context).size.width;
 
-    if (_state.pageMode == 'scroll') {
+    if (_state.pageAnimType.usesScrollReader) {
       _toggleController();
       return;
     }
@@ -635,21 +648,65 @@ class _ReaderPageState extends State<ReaderPage> {
     }
   }
 
+  Duration _pageTurnDuration() {
+    switch (_state.pageAnimType) {
+      case PageAnimType.slide:
+        return const Duration(milliseconds: 240);
+      case PageAnimType.simulation:
+        return const Duration(milliseconds: 320);
+      case PageAnimType.none:
+        return Duration.zero;
+      case PageAnimType.cover:
+      case PageAnimType.scroll:
+        return const Duration(milliseconds: 220);
+    }
+  }
+
+  Curve _pageTurnCurve() {
+    switch (_state.pageAnimType) {
+      case PageAnimType.cover:
+        return Curves.easeOutCubic;
+      case PageAnimType.slide:
+        return Curves.easeOut;
+      case PageAnimType.simulation:
+        return Curves.easeInOutCubic;
+      case PageAnimType.scroll:
+      case PageAnimType.none:
+        return Curves.easeOut;
+    }
+  }
+
+  void _moveToPage(int pageIndex) {
+    if (_state.pageAnimType == PageAnimType.cover ||
+        _state.pageAnimType == PageAnimType.simulation ||
+        _state.pageAnimType == PageAnimType.none) {
+      if (_state.pageAnimType.instantTurn) {
+        _pagedReaderController.jumpToPage(pageIndex);
+      } else {
+        _pagedReaderController.animateToPage(pageIndex);
+      }
+      return;
+    }
+    if (!_pageController.hasClients) return;
+    if (_state.pageAnimType.instantTurn) {
+      _pageController.jumpToPage(pageIndex);
+      return;
+    }
+    _pageController.animateToPage(
+      pageIndex,
+      duration: _pageTurnDuration(),
+      curve: _pageTurnCurve(),
+    );
+  }
+
   void _previousPage(ReaderProvider provider) {
     if (_state.pages.isEmpty) return;
     final currentPage = _activePageIndex();
     if (currentPage > 0) {
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
-      final previousPage = _state.pages[currentPage - 1];
-      setState(() {
-        _state.currentPage = currentPage - 1;
-        _state.chapterPosition = previousPage.startPosition;
-      });
+      _moveToPage(currentPage - 1);
     } else {
-      final chapterIndex = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+      final chapterIndex =
+          _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
       if (chapterIndex <= 0) return;
       _saveProgress(pos: _state.chapterPosition.toDouble());
       // 如果上一章已预排版，直接同步切换（零等待）
@@ -666,17 +723,10 @@ class _ReaderPageState extends State<ReaderPage> {
     if (_state.pages.isEmpty) return;
     final currentPage = _activePageIndex();
     if (currentPage < _state.pages.length - 1) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
-      final nextPage = _state.pages[currentPage + 1];
-      setState(() {
-        _state.currentPage = currentPage + 1;
-        _state.chapterPosition = nextPage.startPosition;
-      });
+      _moveToPage(currentPage + 1);
     } else if (_state.autoNext) {
-      final chapterIndex = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+      final chapterIndex =
+          _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
       if (chapterIndex >= provider.chapters.length - 1) {
         setState(() => _state.showController = true);
         ScaffoldMessenger.of(context).clearSnackBars();
@@ -715,16 +765,15 @@ class _ReaderPageState extends State<ReaderPage> {
     final chapterTitle = _state.prefetchedNextTitle;
     final chapterIndex = _state.prefetchedNextChapterIndex;
 
-    final targetPage = 0; // 下一章从首页开始
-    final normalizedPosition = layout.pages.isEmpty
-        ? 0
-        : layout.pages[targetPage].startPosition;
+    const targetPage = 0; // 下一章从首页开始
+    final normalizedPosition =
+        layout.pages.isEmpty ? 0 : layout.pages[targetPage].startPosition;
 
     // 当前章节变成"上一章"的预排版
     _state.prefetchedPrevLayout = _state.currentLayout;
     _state.prefetchedPrevContent = _state.displayedContent;
-    _state.prefetchedPrevTitle = _displayedChapter(
-      context.read<ReaderProvider>())?.title;
+    _state.prefetchedPrevTitle =
+        _displayedChapter(context.read<ReaderProvider>())?.title;
     _state.prefetchedPrevChapterIndex = _state.laidOutChapterIndex;
 
     // 清除下一章预排版（需要在后台重新预取）
@@ -750,7 +799,8 @@ class _ReaderPageState extends State<ReaderPage> {
     });
 
     oldController.dispose();
-    _paragraphKeys = List.generate(_state.paragraphs.length, (_) => GlobalKey());
+    _paragraphKeys =
+        List.generate(_state.paragraphs.length, (_) => GlobalKey());
 
     final provider = context.read<ReaderProvider>();
     provider.book?.durChapterIndex = chapterIndex;
@@ -770,15 +820,14 @@ class _ReaderPageState extends State<ReaderPage> {
     final chapterIndex = _state.prefetchedPrevChapterIndex;
 
     final targetPage = layout.pages.length - 1; // 上一章从末页开始
-    final normalizedPosition = layout.pages.isEmpty
-        ? 0
-        : layout.pages[targetPage].startPosition;
+    final normalizedPosition =
+        layout.pages.isEmpty ? 0 : layout.pages[targetPage].startPosition;
 
     // 当前章节变成"下一章"的预排版
     _state.prefetchedNextLayout = _state.currentLayout;
     _state.prefetchedNextContent = _state.displayedContent;
-    _state.prefetchedNextTitle = _displayedChapter(
-      context.read<ReaderProvider>())?.title;
+    _state.prefetchedNextTitle =
+        _displayedChapter(context.read<ReaderProvider>())?.title;
     _state.prefetchedNextChapterIndex = _state.laidOutChapterIndex;
 
     // 清除上一章预排版（需要在后台重新预取）
@@ -804,7 +853,8 @@ class _ReaderPageState extends State<ReaderPage> {
     });
 
     oldController.dispose();
-    _paragraphKeys = List.generate(_state.paragraphs.length, (_) => GlobalKey());
+    _paragraphKeys =
+        List.generate(_state.paragraphs.length, (_) => GlobalKey());
 
     final provider = context.read<ReaderProvider>();
     provider.book?.durChapterIndex = chapterIndex;
@@ -818,7 +868,8 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _toggleController() {
     if (_state.autoPageRunning) {
-      setState(() => _state.showAutoPageControls = !_state.showAutoPageControls);
+      setState(
+          () => _state.showAutoPageControls = !_state.showAutoPageControls);
       return;
     }
     setState(() => _state.showController = !_state.showController);
@@ -826,7 +877,8 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _goToPreviousChapter() {
     final provider = context.read<ReaderProvider>();
-    final chapterIndex = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+    final chapterIndex =
+        _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
     if (chapterIndex <= 0) return;
     _saveProgress(pos: _getProgress());
     _openChapter(chapterIndex - 1, openAtEnd: true);
@@ -834,7 +886,8 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _goToNextChapter() {
     final provider = context.read<ReaderProvider>();
-    final chapterIndex = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+    final chapterIndex =
+        _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
     if (chapterIndex >= provider.chapters.length - 1) return;
     _saveProgress(pos: _getProgress());
     _openChapter(chapterIndex + 1, chapterPosition: 0);
@@ -866,16 +919,16 @@ class _ReaderPageState extends State<ReaderPage> {
                 Positioned.fill(
                   child: GestureDetector(
                     onTap: _toggleController,
-                    child: Container(
-                        color: Colors.black.withOpacity(0.18)),
+                    child: Container(color: Colors.black.withOpacity(0.18)),
                   ),
                 ),
                 ControllerOverlay(
                   data: ReaderControllerViewData(
                     bookName: provider.book?.name ?? '',
                     chapterTitle: _displayedChapter(provider)?.title ?? '',
-                    sourceName:
-                        provider.book?.originName ?? provider.book?.origin ?? '未知书源',
+                    sourceName: provider.book?.originName ??
+                        provider.book?.origin ??
+                        '未知书源',
                     hasBookmark: _hasBookmarkAtCurrent(provider),
                     replaceRuleEnabled: provider.book?.useReplaceRule == true,
                     themeName: _state.theme,
@@ -883,7 +936,8 @@ class _ReaderPageState extends State<ReaderPage> {
                     ttsState: _tts.state,
                     ttsRate: _tts.rate,
                     autoPageInterval: _state.autoPageInterval,
-                    chapterIndex: _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0),
+                    chapterIndex: _state.displayedChapterIndex(
+                        provider.book?.durChapterIndex ?? 0),
                     totalChapters: provider.chapters.length,
                     chapterSliderValue: _state.chapterSliderValue,
                     ttsParagraphIndex: _state.ttsParagraphIndex,
@@ -908,7 +962,8 @@ class _ReaderPageState extends State<ReaderPage> {
                     onChapterSliderEnd: (value) {
                       setState(() => _state.chapterSliderValue = null);
                       final target = value.round();
-                      final ci = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+                      final ci = _state.displayedChapterIndex(
+                          provider.book?.durChapterIndex ?? 0);
                       if (target != ci && _token != null) {
                         _saveProgress(pos: _getProgress());
                         _openChapter(target, chapterPosition: 0);
@@ -947,8 +1002,7 @@ class _ReaderPageState extends State<ReaderPage> {
                         children: [
                           IconButton(
                             onPressed: () => _changeAutoPageInterval(-1),
-                            icon: const Icon(Icons.remove,
-                                color: Colors.white),
+                            icon: const Icon(Icons.remove, color: Colors.white),
                           ),
                           Expanded(
                             child: Column(
@@ -968,8 +1022,7 @@ class _ReaderPageState extends State<ReaderPage> {
                           ),
                           IconButton(
                             onPressed: () => _changeAutoPageInterval(1),
-                            icon:
-                                const Icon(Icons.add, color: Colors.white),
+                            icon: const Icon(Icons.add, color: Colors.white),
                           ),
                           const SizedBox(width: 8),
                           TextButton.icon(
@@ -1046,7 +1099,7 @@ class _ReaderPageState extends State<ReaderPage> {
               : _state.isComic ||
                       PaginationEngine.isHtmlContent(_state.displayedContent)
                   ? _buildComicContent(provider)
-                  : _state.pageMode == 'scroll'
+                  : _state.pageAnimType.usesScrollReader
                       ? _buildScrollNovelContent(provider)
                       : _buildPagedNovelContent(provider),
     );
@@ -1070,13 +1123,15 @@ class _ReaderPageState extends State<ReaderPage> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final chapterTitle =
-            _displayedChapter(provider)?.title ?? provider.book?.durChapterTitle ?? '';
+        final chapterTitle = _displayedChapter(provider)?.title ??
+            provider.book?.durChapterTitle ??
+            '';
 
         return PagedReader(
           key: ValueKey('chapter_${_state.laidOutChapterIndex}'),
           pages: _state.pages,
           pageController: _pageController,
+          manualController: _pagedReaderController,
           theme: _state.currentTheme,
           fontSize: _state.fontSize,
           lineHeight: _state.lineHeight,
@@ -1093,6 +1148,7 @@ class _ReaderPageState extends State<ReaderPage> {
           topPadding: _state.topPadding,
           paragraphSpacing: _state.paragraphSpacing,
           firstLineIndent: _state.firstLineIndent,
+          animType: _state.pageAnimType,
           onPageChanged: (page) {
             final position =
                 _state.pages.isEmpty ? 0 : _state.pages[page].startPosition;
@@ -1111,8 +1167,9 @@ class _ReaderPageState extends State<ReaderPage> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final chapterTitle =
-        _displayedChapter(provider)?.title ?? provider.book?.durChapterTitle ?? '';
+    final chapterTitle = _displayedChapter(provider)?.title ??
+        provider.book?.durChapterTitle ??
+        '';
 
     return ScrollReader(
       paragraphs: _state.paragraphs,
@@ -1203,14 +1260,15 @@ class _ReaderPageState extends State<ReaderPage> {
           Icon(
             _state.ttsReading ? Icons.multitrack_audio : Icons.headphones,
             size: 64,
-            color: _state.ttsReading
-                ? const Color(0xFF00A88F)
-                : Colors.grey[400],
+            color:
+                _state.ttsReading ? const Color(0xFF00A88F) : Colors.grey[400],
           ),
           const SizedBox(height: 16),
           Text('有声书朗读',
               style: TextStyle(
-                  color: theme.text, fontSize: 18, fontWeight: FontWeight.bold)),
+                  color: theme.text,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Text(
             _state.ttsReading
@@ -1225,7 +1283,8 @@ class _ReaderPageState extends State<ReaderPage> {
               width: 250,
               child: LinearProgressIndicator(
                 value: _state.paragraphs.isNotEmpty
-                    ? ((_state.ttsParagraphIndex + 1) / _state.paragraphs.length)
+                    ? ((_state.ttsParagraphIndex + 1) /
+                            _state.paragraphs.length)
                         .clamp(0.0, 1.0)
                     : null,
                 backgroundColor: theme.divider,
@@ -1279,7 +1338,8 @@ class _ReaderPageState extends State<ReaderPage> {
               style: TextStyle(color: _state.currentTheme.text, fontSize: 16)),
           const SizedBox(height: 4),
           Text('请使用外部应用打开',
-              style: TextStyle(color: _state.currentTheme.secondaryText, fontSize: 14)),
+              style: TextStyle(
+                  color: _state.currentTheme.secondaryText, fontSize: 14)),
         ],
       ),
     );
@@ -1288,8 +1348,7 @@ class _ReaderPageState extends State<ReaderPage> {
   String _proxyImages(String html) {
     final baseUrl = AppConstants.apiBase;
     return html.replaceAllMapped(
-      RegExp(
-          r"""<img\s[^>]*src\s*=\s*["']([^"']+)["'][^>]*>""",
+      RegExp(r"""<img\s[^>]*src\s*=\s*["']([^"']+)["'][^>]*>""",
           caseSensitive: false),
       (match) {
         final fullTag = match.group(0) ?? '';
@@ -1327,9 +1386,8 @@ class _ReaderPageState extends State<ReaderPage> {
     final targetPage = _paginationEngine
         .pageIndexForPosition(layout.pages, targetPosition)
         .clamp(0, layout.pages.length - 1);
-    final normalizedPosition = layout.pages.isEmpty
-        ? 0
-        : layout.pages[targetPage].startPosition;
+    final normalizedPosition =
+        layout.pages.isEmpty ? 0 : layout.pages[targetPage].startPosition;
 
     setState(() {
       _state.paragraphs = layout.paragraphs;
@@ -1340,7 +1398,8 @@ class _ReaderPageState extends State<ReaderPage> {
       _state.chapterPosition = normalizedPosition;
     });
 
-    _paragraphKeys = List.generate(_state.paragraphs.length, (_) => GlobalKey());
+    _paragraphKeys =
+        List.generate(_state.paragraphs.length, (_) => GlobalKey());
     // 先创建新 controller，再 dispose 旧的
     final oldCtrl = _pageController;
     _pageController = PageController(initialPage: targetPage);
@@ -1380,7 +1439,8 @@ class _ReaderPageState extends State<ReaderPage> {
               _comicScrollController.position.maxScrollExtent - 30) {
         if (_state.autoNext &&
             _state.hasNextChapter(
-                _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0),
+                _state
+                    .displayedChapterIndex(provider.book?.durChapterIndex ?? 0),
                 provider.chapters.length)) {
           _goToNextChapter();
         } else {
@@ -1392,7 +1452,7 @@ class _ReaderPageState extends State<ReaderPage> {
       return;
     }
 
-    if (_state.pageMode == 'scroll') {
+    if (_state.pageAnimType.usesScrollReader) {
       if (!_novelScrollController.hasClients) return;
       final target = (_novelScrollController.offset +
               MediaQuery.of(context).size.height * 0.75)
@@ -1400,7 +1460,8 @@ class _ReaderPageState extends State<ReaderPage> {
       if (target >= _novelScrollController.position.maxScrollExtent - 20) {
         if (_state.autoNext &&
             _state.hasNextChapter(
-                _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0),
+                _state
+                    .displayedChapterIndex(provider.book?.durChapterIndex ?? 0),
                 provider.chapters.length)) {
           _goToNextChapter();
         } else {
@@ -1420,7 +1481,8 @@ class _ReaderPageState extends State<ReaderPage> {
     _nextPage(provider);
     if (wasLastPage &&
         (!_state.hasNextChapter(
-                _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0),
+                _state
+                    .displayedChapterIndex(provider.book?.durChapterIndex ?? 0),
                 provider.chapters.length) ||
             !_state.autoNext)) {
       _stopAutoPageMode();
@@ -1483,7 +1545,8 @@ class _ReaderPageState extends State<ReaderPage> {
     if (_state.ttsParagraphIndex >= 0) {
       // 已有 TTS 位置，继续使用
       startParagraphIndex = _state.ttsParagraphIndex;
-    } else if (_state.pages.isNotEmpty && _state.currentPage < _state.pages.length) {
+    } else if (_state.pages.isNotEmpty &&
+        _state.currentPage < _state.pages.length) {
       // 从当前页面的第一个段落开始
       final currentPageLines = _state.pages[_state.currentPage].lines;
       startParagraphIndex = currentPageLines.isNotEmpty
@@ -1516,7 +1579,8 @@ class _ReaderPageState extends State<ReaderPage> {
     setState(() {
       _state.paragraphs = layout.paragraphs;
     });
-    _paragraphKeys = List.generate(_state.paragraphs.length, (_) => GlobalKey());
+    _paragraphKeys =
+        List.generate(_state.paragraphs.length, (_) => GlobalKey());
   }
 
   Future<void> _speakParagraphAt(int index) async {
@@ -1534,7 +1598,8 @@ class _ReaderPageState extends State<ReaderPage> {
         return;
       }
       final provider = context.read<ReaderProvider>();
-      final ci = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+      final ci =
+          _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
       if (_state.autoNext &&
           _state.hasNextChapter(ci, provider.chapters.length) &&
           _token != null) {
@@ -1552,21 +1617,10 @@ class _ReaderPageState extends State<ReaderPage> {
   void _focusParagraph(int index) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_state.pageMode == 'paged') {
+      if (!_state.pageAnimType.usesScrollReader) {
         final pageIndex = _state.paragraphPageLookup[index];
-        if (pageIndex != null &&
-            _pageController.hasClients &&
-            pageIndex != _state.currentPage) {
-          _pageController.animateToPage(
-            pageIndex,
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeOut,
-          );
-          setState(() {
-            _state.currentPage = pageIndex;
-            _state.chapterPosition =
-                _state.pages[pageIndex].startPosition;
-          });
+        if (pageIndex != null && pageIndex != _state.currentPage) {
+          _moveToPage(pageIndex);
         }
         return;
       }
@@ -1618,14 +1672,16 @@ class _ReaderPageState extends State<ReaderPage> {
   // ============================================================
 
   bool _hasBookmarkAtCurrent(ReaderProvider provider) {
-    final currentIndex = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+    final currentIndex =
+        _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
     return _bookmarks.any(
       (mark) => mark.chapterIndex == currentIndex && mark.chapterPos != null,
     );
   }
 
   Bookmark? _bookmarkAtCurrent(ReaderProvider provider) {
-    final idx = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+    final idx =
+        _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
     for (final mark in _bookmarks) {
       if (mark.chapterIndex == idx && mark.chapterPos != null) return mark;
     }
@@ -1653,7 +1709,8 @@ class _ReaderPageState extends State<ReaderPage> {
     }
     try {
       final chapterName = _displayedChapter(provider)?.title ?? '';
-      final index = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+      final index =
+          _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
       final pos = _state.chapterPosition.toDouble();
       await ApiService.instance.addBookmark(
         _token!,
@@ -1686,8 +1743,8 @@ class _ReaderPageState extends State<ReaderPage> {
   Future<void> _jumpToBookmark(Bookmark mark) async {
     if (_token == null) return;
     final provider = context.read<ReaderProvider>();
-    final targetChapter =
-        mark.chapterIndex ?? _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+    final targetChapter = mark.chapterIndex ??
+        _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
     Navigator.pop(context);
     _saveProgress(pos: _getProgress());
     await _openChapter(targetChapter,
@@ -1733,7 +1790,8 @@ class _ReaderPageState extends State<ReaderPage> {
                   itemCount: provider.chapters.length,
                   itemBuilder: (context, index) {
                     final chapter = provider.chapters[index];
-                    final ci = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+                    final ci = _state.displayedChapterIndex(
+                        provider.book?.durChapterIndex ?? 0);
                     final isCurrent = index == ci;
                     final isRead = provider.readChapters.contains(index);
                     final hasBookmark = _bookmarkChapterIndices.contains(index);
@@ -1755,9 +1813,8 @@ class _ReaderPageState extends State<ReaderPage> {
                               : isRead
                                   ? Colors.grey
                                   : null,
-                          fontWeight: isCurrent
-                              ? FontWeight.bold
-                              : FontWeight.normal,
+                          fontWeight:
+                              isCurrent ? FontWeight.bold : FontWeight.normal,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -1820,9 +1877,9 @@ class _ReaderPageState extends State<ReaderPage> {
                         itemBuilder: (context, index) {
                           final mark = _bookmarks[index];
                           final provider = context.read<ReaderProvider>();
-                          final isCurrentChapter =
-                              mark.chapterIndex ==
-                                  _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
+                          final isCurrentChapter = mark.chapterIndex ==
+                              _state.displayedChapterIndex(
+                                  provider.book?.durChapterIndex ?? 0);
                           return ListTile(
                             leading: const Icon(Icons.bookmark,
                                 color: Color(0xFF00A88F)),
@@ -1909,8 +1966,7 @@ class _ReaderPageState extends State<ReaderPage> {
                         max: 32,
                         divisions: 20,
                         label: _state.fontSize.round().toString(),
-                        onChanged: (v) => commit(
-                            () => _state.fontSize = v,
+                        onChanged: (v) => commit(() => _state.fontSize = v,
                             rebuildPages: true),
                       ),
                     ),
@@ -1934,13 +1990,7 @@ class _ReaderPageState extends State<ReaderPage> {
                                   _pageAnimLabel(anim),
                                   _state.pageAnimType == anim,
                                   () => commit(() {
-                                    _state.pageAnimType = anim;
-                                    // 滚动动画等同于 pageMode=scroll
-                                    if (anim == PageAnimType.scroll) {
-                                      _state.pageMode = 'scroll';
-                                    } else {
-                                      _state.pageMode = 'paged';
-                                    }
+                                    _state.applyPageAnimType(anim);
                                   }, rebuildPages: true),
                                 ),
                             ],
@@ -1968,12 +2018,15 @@ class _ReaderPageState extends State<ReaderPage> {
                                   label: ReaderTheme.displayName(preset.name),
                                   color: preset.background,
                                   selected: _state.theme == preset.name,
-                                  onTap: () => commit(() => _state.theme = preset.name),
+                                  onTap: () =>
+                                      commit(() => _state.theme = preset.name),
                                 ),
                               // 自定义颜色
                               _ThemeColorDot(
                                 label: '自定义',
-                                color: Colors.grey.shade300,
+                                color: _state.theme.startsWith('custom_')
+                                    ? _state.currentTheme.background
+                                    : Colors.grey.shade300,
                                 selected: _state.theme.startsWith('custom_'),
                                 onTap: () async {
                                   final color = await _showColorPicker(
@@ -2081,8 +2134,7 @@ class _ReaderPageState extends State<ReaderPage> {
                         max: 2.6,
                         divisions: 14,
                         label: _state.lineHeight.toStringAsFixed(1),
-                        onChanged: (v) => commit(
-                            () => _state.lineHeight = v,
+                        onChanged: (v) => commit(() => _state.lineHeight = v,
                             rebuildPages: true),
                       ),
                     ),
@@ -2145,8 +2197,7 @@ class _ReaderPageState extends State<ReaderPage> {
                         max: 48,
                         divisions: 12,
                         label: _state.topPadding.round().toString(),
-                        onChanged: (v) => commit(
-                            () => _state.topPadding = v,
+                        onChanged: (v) => commit(() => _state.topPadding = v,
                             rebuildPages: true),
                       ),
                     ),
@@ -2222,8 +2273,7 @@ class _ReaderPageState extends State<ReaderPage> {
                       contentPadding: EdgeInsets.zero,
                       title: const Text('显示进度'),
                       value: _state.showPageNumber,
-                      onChanged: (v) => commit(
-                          () => _state.showPageNumber = v,
+                      onChanged: (v) => commit(() => _state.showPageNumber = v,
                           rebuildPages: true),
                     ),
 
@@ -2232,19 +2282,17 @@ class _ReaderPageState extends State<ReaderPage> {
                       contentPadding: EdgeInsets.zero,
                       title: const Text('音量键翻页'),
                       value: _state.volumeKeyFlip,
-                      onChanged: (v) =>
-                          commit(() => _state.volumeKeyFlip = v),
+                      onChanged: (v) => commit(() => _state.volumeKeyFlip = v),
                     ),
 
                     // ---- 底部区域 ----
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('底部区域'),
-                      subtitle:
-                          const Text('时间、电量、页码', style: TextStyle(fontSize: 12)),
+                      subtitle: const Text('时间、电量、页码',
+                          style: TextStyle(fontSize: 12)),
                       value: _state.showBottomBar,
-                      onChanged: (v) => commit(
-                          () => _state.showBottomBar = v,
+                      onChanged: (v) => commit(() => _state.showBottomBar = v,
                           rebuildPages: true),
                     ),
 
@@ -2252,11 +2300,10 @@ class _ReaderPageState extends State<ReaderPage> {
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('顶部区域'),
-                      subtitle: const Text('章节名',
-                          style: TextStyle(fontSize: 12)),
+                      subtitle:
+                          const Text('章节名', style: TextStyle(fontSize: 12)),
                       value: _state.showTopBar,
-                      onChanged: (v) => commit(
-                          () => _state.showTopBar = v,
+                      onChanged: (v) => commit(() => _state.showTopBar = v,
                           rebuildPages: true),
                     ),
 
@@ -2265,25 +2312,22 @@ class _ReaderPageState extends State<ReaderPage> {
                       contentPadding: EdgeInsets.zero,
                       title: const Text('自动下一章'),
                       value: _state.autoNext,
-                      onChanged: (v) =>
-                          commit(() => _state.autoNext = v),
+                      onChanged: (v) => commit(() => _state.autoNext = v),
                     ),
 
                     // ---- 自动翻页间隔 ----
                     if (!_state.isComic)
                       _SettingRow(
                         label: '翻页间隔',
-                        value:
-                            '${_state.autoPageInterval.toStringAsFixed(0)}秒',
+                        value: '${_state.autoPageInterval.toStringAsFixed(0)}秒',
                         child: Slider(
                           value: _state.autoPageInterval,
                           min: 3,
                           max: 60,
                           divisions: 57,
-                          label:
-                              _state.autoPageInterval.toStringAsFixed(0),
-                          onChanged: (v) => commit(
-                              () => _state.autoPageInterval = v),
+                          label: _state.autoPageInterval.toStringAsFixed(0),
+                          onChanged: (v) =>
+                              commit(() => _state.autoPageInterval = v),
                         ),
                       ),
                   ],
@@ -2351,12 +2395,10 @@ class _ReaderPageState extends State<ReaderPage> {
                           final id =
                               (voice['name'] ?? voice['identifier']).toString();
                           final locale = (voice['locale'] ?? '').toString();
-                          final label =
-                              locale.isEmpty ? id : '$id ($locale)';
+                          final label = locale.isEmpty ? id : '$id ($locale)';
                           return DropdownMenuItem<String>(
                             value: id,
-                            child: Text(label,
-                                overflow: TextOverflow.ellipsis),
+                            child: Text(label, overflow: TextOverflow.ellipsis),
                           );
                         }).toList(),
                         onChanged: (value) async {
@@ -2399,8 +2441,7 @@ class _ReaderPageState extends State<ReaderPage> {
               for (final minutes in <int?>[null, 15, 30, 60])
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title:
-                      Text(minutes == null ? '关闭定时' : '$minutes 分钟后停止'),
+                  title: Text(minutes == null ? '关闭定时' : '$minutes 分钟后停止'),
                   trailing: _state.ttsSleepMinutes == minutes
                       ? const Icon(Icons.check, color: Color(0xFF00A88F))
                       : null,
@@ -2518,8 +2559,7 @@ class _ReaderPageState extends State<ReaderPage> {
                 type == currentType
                     ? Icons.check_circle
                     : Icons.radio_button_unchecked,
-                color:
-                    type == currentType ? const Color(0xFF00A88F) : null,
+                color: type == currentType ? const Color(0xFF00A88F) : null,
               ),
               title: Row(
                 children: [
@@ -2622,7 +2662,7 @@ class _ReaderPageState extends State<ReaderPage> {
       case PageAnimType.scroll:
         return '滚动';
       case PageAnimType.none:
-        return '无动画';
+        return '无';
     }
   }
 
@@ -2760,7 +2800,8 @@ class _ThemeColorDot extends StatelessWidget {
               color: color,
               shape: BoxShape.circle,
               border: Border.all(
-                color: selected ? const Color(0xFF00A88F) : Colors.grey.shade400,
+                color:
+                    selected ? const Color(0xFF00A88F) : Colors.grey.shade400,
                 width: selected ? 3 : 1,
               ),
               boxShadow: isCustom
@@ -2776,7 +2817,8 @@ class _ThemeColorDot extends StatelessWidget {
             child: isCustom
                 ? const Icon(Icons.add, color: Colors.grey, size: 20)
                 : (selected
-                    ? const Icon(Icons.check, color: Color(0xFF00A88F), size: 16)
+                    ? const Icon(Icons.check,
+                        color: Color(0xFF00A88F), size: 16)
                     : null),
           ),
           const SizedBox(height: 4),

@@ -117,16 +117,18 @@ class ReaderTheme {
   /// 创建自定义颜色主题
   static ReaderTheme custom(Color bgColor) {
     final isDark = bgColor.computeLuminance() < 0.35;
+    final red = (bgColor.r * 255).round();
+    final green = (bgColor.g * 255).round();
+    final blue = (bgColor.b * 255).round();
     return ReaderTheme(
-      name: 'custom_${bgColor.value.toRadixString(16)}',
+      name: 'custom_${bgColor.toARGB32().toRadixString(16)}',
       background: bgColor,
       text: isDark ? const Color(0xFFE4E7EB) : const Color(0xFF2D2D2D),
-      secondaryText:
-          isDark ? const Color(0xFF8C98A5) : const Color(0xFF8A8175),
+      secondaryText: isDark ? const Color(0xFF8C98A5) : const Color(0xFF8A8175),
       divider: isDark
-          ? Color.fromARGB(255, bgColor.red ~/ 2, bgColor.green ~/ 2, bgColor.blue ~/ 2)
-          : Color.fromARGB(255, (bgColor.red * 0.85).round(),
-              (bgColor.green * 0.85).round(), (bgColor.blue * 0.85).round()),
+          ? Color.fromARGB(255, red ~/ 2, green ~/ 2, blue ~/ 2)
+          : Color.fromARGB(255, (red * 0.85).round(), (green * 0.85).round(),
+              (blue * 0.85).round()),
       highlight: const Color(0x3300A88F),
     );
   }
@@ -141,9 +143,10 @@ class ReaderTheme {
     // 如果是自定义颜色
     if (name.startsWith('custom_')) {
       final hexStr = name.substring(7);
-      final value = int.tryParse(hexStr);
+      final value = int.tryParse(hexStr, radix: 16);
       if (value != null) {
-        return custom(Color(value));
+        final colorValue = hexStr.length <= 6 ? (0xFF000000 | value) : value;
+        return custom(Color(colorValue));
       }
     }
     return light;
