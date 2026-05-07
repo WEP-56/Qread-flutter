@@ -22,6 +22,9 @@ class PagedReader extends StatelessWidget {
   final String timeLabel;
   final String batteryLabel;
   final ValueChanged<int> onPageChanged;
+  final bool showTopBar;
+  final bool showBottomBar;
+  final bool showPageNumber;
 
   const PagedReader({
     Key? key,
@@ -37,6 +40,9 @@ class PagedReader extends StatelessWidget {
     required this.timeLabel,
     required this.batteryLabel,
     required this.onPageChanged,
+    this.showTopBar = true,
+    this.showBottomBar = true,
+    this.showPageNumber = true,
   }) : super(key: key);
 
   @override
@@ -63,6 +69,9 @@ class PagedReader extends StatelessWidget {
           timeLabel: timeLabel,
           batteryLabel: batteryLabel,
           ttsParagraphIndex: ttsParagraphIndex,
+          showTopBar: showTopBar,
+          showBottomBar: showBottomBar,
+          showPageNumber: showPageNumber,
         );
       },
     );

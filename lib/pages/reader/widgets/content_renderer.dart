@@ -23,14 +23,17 @@ class ContentRenderer {
     required String timeLabel,
     required String batteryLabel,
     required int ttsParagraphIndex,
+    bool showTopBar = true,
+    bool showBottomBar = true,
+    bool showPageNumber = true,
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 18, 24, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildChapterHeader(chapterTitle, theme),
-          const SizedBox(height: 14),
+          if (showTopBar) _buildChapterHeader(chapterTitle, theme),
+          if (showTopBar) const SizedBox(height: 14),
           // 使用 Expanded 限制文字区域高度，内部用 ClipRect 裁剪
           Expanded(
             child: ClipRect(
@@ -50,12 +53,13 @@ class ContentRenderer {
             ),
           ),
           // 页脚固定在底部
-          _buildFooter(
-            theme: theme,
-            pageIndicator: pageIndicator,
-            timeLabel: timeLabel,
-            batteryLabel: batteryLabel,
-          ),
+          if (showBottomBar)
+            _buildFooter(
+              theme: theme,
+              pageIndicator: showPageNumber ? pageIndicator : '',
+              timeLabel: timeLabel,
+              batteryLabel: batteryLabel,
+            ),
         ],
       ),
     );

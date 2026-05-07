@@ -24,6 +24,13 @@ class ReaderState with ChangeNotifier {
   String theme = 'light';
   String pageMode = 'paged';
 
+  // ---- 更多设置（默认值） ----
+  bool screenWakelock = true;   // 屏幕常亮
+  bool showPageNumber = true;   // 显示页码
+  bool volumeKeyFlip = false;   // 音量键翻页
+  bool showBottomBar = true;    // 底部区域（时间/电量/页码）
+  bool showTopBar = true;       // 顶部区域（章节序号/章节名）
+
   // ---- 章节状态 ----
   String displayedContent = '';
   int chapterRequestSerial = 0;

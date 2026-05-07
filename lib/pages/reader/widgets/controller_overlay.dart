@@ -137,21 +137,24 @@ class ControllerOverlay extends StatelessWidget {
           child: _FloatingCapsule(data: data, callbacks: callbacks),
         ),
 
-        // 底部区域：进度条 + 功能栏
+        // 底部区域：进度条 + 功能栏（几乎不透明）
         Positioned(
           left: 0,
           right: 0,
           bottom: 0,
           child: SafeArea(
             top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _ProgressStrip(data: data, callbacks: callbacks),
-                const SizedBox(height: 8),
-                _BottomActionBar(data: data, callbacks: callbacks),
-                const SizedBox(height: 8),
-              ],
+            child: Container(
+              color: Colors.black.withOpacity(0.88),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ProgressStrip(data: data, callbacks: callbacks),
+                  const SizedBox(height: 8),
+                  _BottomActionBar(data: data, callbacks: callbacks),
+                  const SizedBox(height: 8),
+                ],
+              ),
             ),
           ),
         ),
@@ -264,7 +267,7 @@ class _FloatingCapsule extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 48),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Colors.white.withOpacity(0.72),
             borderRadius: BorderRadius.circular(40),
             boxShadow: [
               BoxShadow(

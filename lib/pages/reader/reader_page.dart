@@ -34,6 +34,11 @@ class _ReaderPageState extends State<ReaderPage> {
   static const _keyAutoPageInterval = 'reader_auto_page_interval';
   static const _keyProgressChapterPrefix = 'reader_progress_ch_';
   static const _keyProgressPosPrefix = 'reader_progress_pos_';
+  static const _keyScreenWakelock = 'reader_screen_wakelock';
+  static const _keyShowPageNumber = 'reader_show_page_number';
+  static const _keyVolumeKeyFlip = 'reader_volume_key_flip';
+  static const _keyShowBottomBar = 'reader_show_bottom_bar';
+  static const _keyShowTopBar = 'reader_show_top_bar';
 
   late PageController _pageController;
   final ScrollController _comicScrollController = ScrollController();
@@ -99,6 +104,11 @@ class _ReaderPageState extends State<ReaderPage> {
       _state.pageMode = prefs.getString(_keyPageMode) ?? 'paged';
       _state.autoPageInterval =
           prefs.getDouble(_keyAutoPageInterval) ?? 12.0;
+      _state.screenWakelock = prefs.getBool(_keyScreenWakelock) ?? true;
+      _state.showPageNumber = prefs.getBool(_keyShowPageNumber) ?? true;
+      _state.volumeKeyFlip = prefs.getBool(_keyVolumeKeyFlip) ?? false;
+      _state.showBottomBar = prefs.getBool(_keyShowBottomBar) ?? true;
+      _state.showTopBar = prefs.getBool(_keyShowTopBar) ?? true;
     });
   }
 
@@ -110,6 +120,11 @@ class _ReaderPageState extends State<ReaderPage> {
     await prefs.setString(_keyTheme, _state.theme);
     await prefs.setString(_keyPageMode, _state.pageMode);
     await prefs.setDouble(_keyAutoPageInterval, _state.autoPageInterval);
+    await prefs.setBool(_keyScreenWakelock, _state.screenWakelock);
+    await prefs.setBool(_keyShowPageNumber, _state.showPageNumber);
+    await prefs.setBool(_keyVolumeKeyFlip, _state.volumeKeyFlip);
+    await prefs.setBool(_keyShowBottomBar, _state.showBottomBar);
+    await prefs.setBool(_keyShowTopBar, _state.showTopBar);
   }
 
   // ============================================================
@@ -1049,6 +1064,9 @@ class _ReaderPageState extends State<ReaderPage> {
           ttsParagraphIndex: _state.ttsParagraphIndex,
           timeLabel: _state.formatTime(),
           batteryLabel: _state.batteryLabel(),
+          showTopBar: _state.showTopBar,
+          showBottomBar: _state.showBottomBar,
+          showPageNumber: _state.showPageNumber,
           onPageChanged: (page) {
             final position =
                 _state.pages.isEmpty ? 0 : _state.pages[page].startPosition;
@@ -1816,6 +1834,7 @@ class _ReaderPageState extends State<ReaderPage> {
   void _showReadingSettingsSheet(ReaderProvider provider) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -1834,118 +1853,186 @@ class _ReaderPageState extends State<ReaderPage> {
               }
             }
 
-            return SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('阅读设置',
-                        style: TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        const SizedBox(width: 56, child: Text('字号')),
-                        Expanded(
-                          child: Slider(
-                            value: _state.fontSize,
-                            min: 12,
-                            max: 32,
-                            divisions: 20,
-                            label: _state.fontSize.round().toString(),
-                            onChanged: (value) => commit(
-                                () => _state.fontSize = value,
-                                rebuildPages: true),
+            return DraggableScrollableSheet(
+              initialChildSize: 0.65,
+              minChildSize: 0.4,
+              maxChildSize: 0.85,
+              expand: false,
+              builder: (_, scrollController) {
+                return SingleChildScrollView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 拖拽指示条
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(2),
                           ),
                         ),
-                      ],
-                    ),
-                    Row(
-                      children: [
-                        const SizedBox(width: 56, child: Text('行距')),
-                        Expanded(
-                          child: Slider(
-                            value: _state.lineHeight,
-                            min: 1.2,
-                            max: 2.6,
-                            divisions: 14,
-                            label: _state.lineHeight.toStringAsFixed(1),
-                            onChanged: (value) => commit(
-                                () => _state.lineHeight = value,
-                                rebuildPages: true),
-                          ),
+                      ),
+                      const Text('阅读设置',
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 16),
+
+                      // ---- 字号 ----
+                      _SettingRow(
+                        label: '字号',
+                        value: _state.fontSize.round().toString(),
+                        child: Slider(
+                          value: _state.fontSize,
+                          min: 12,
+                          max: 32,
+                          divisions: 20,
+                          label: _state.fontSize.round().toString(),
+                          onChanged: (v) => commit(
+                              () => _state.fontSize = v,
+                              rebuildPages: true),
                         ),
-                      ],
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('自动下一章'),
-                      value: _state.autoNext,
-                      onChanged: (value) =>
-                          commit(() => _state.autoNext = value),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('翻页模式'),
-                      trailing: SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(value: 'paged', label: Text('覆盖')),
-                          ButtonSegment(value: 'scroll', label: Text('滚动')),
-                        ],
-                        selected: {_state.pageMode},
-                        onSelectionChanged: (value) {
-                          commit(() => _state.pageMode = value.first,
-                              rebuildPages: true);
-                        },
                       ),
-                    ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('主题'),
-                      trailing: SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(value: 'light', label: Text('浅色')),
-                          ButtonSegment(value: 'dark', label: Text('深色')),
-                          ButtonSegment(value: 'sepia', label: Text('护眼')),
-                        ],
-                        selected: {_state.theme},
-                        onSelectionChanged: (value) =>
-                            commit(() => _state.theme = value.first),
+
+                      // ---- 行距 ----
+                      _SettingRow(
+                        label: '行距',
+                        value: _state.lineHeight.toStringAsFixed(1),
+                        child: Slider(
+                          value: _state.lineHeight,
+                          min: 1.2,
+                          max: 2.6,
+                          divisions: 14,
+                          label: _state.lineHeight.toStringAsFixed(1),
+                          onChanged: (v) => commit(
+                              () => _state.lineHeight = v,
+                              rebuildPages: true),
+                        ),
                       ),
-                    ),
-                    if (!_state.isComic)
-                      ListTile(
+
+                      const Divider(height: 24),
+
+                      // ---- 翻页模式 ----
+                      _SettingRow(
+                        label: '翻页模式',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _ChoiceChip('覆盖', _state.pageMode == 'paged', () {
+                              commit(() => _state.pageMode = 'paged',
+                                  rebuildPages: true);
+                            }),
+                            const SizedBox(width: 8),
+                            _ChoiceChip('滚动', _state.pageMode == 'scroll', () {
+                              commit(() => _state.pageMode = 'scroll',
+                                  rebuildPages: true);
+                            }),
+                          ],
+                        ),
+                      ),
+
+                      // ---- 主题 ----
+                      _SettingRow(
+                        label: '主题',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _ChoiceChip('浅色', _state.theme == 'light', () {
+                              commit(() => _state.theme = 'light');
+                            }),
+                            const SizedBox(width: 6),
+                            _ChoiceChip('深色', _state.theme == 'dark', () {
+                              commit(() => _state.theme = 'dark');
+                            }),
+                            const SizedBox(width: 6),
+                            _ChoiceChip('护眼', _state.theme == 'sepia', () {
+                              commit(() => _state.theme = 'sepia');
+                            }),
+                          ],
+                        ),
+                      ),
+
+                      const Divider(height: 24),
+
+                      // ---- 自动下一章 ----
+                      SwitchListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('自动翻页间隔'),
-                        subtitle: Text(
-                            '${_state.autoPageInterval.toStringAsFixed(0)} 秒'),
-                        trailing: SizedBox(
-                          width: 180,
+                        title: const Text('自动下一章'),
+                        value: _state.autoNext,
+                        onChanged: (v) => commit(() => _state.autoNext = v),
+                      ),
+
+                      // ---- 屏幕常亮 ----
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('屏幕常亮'),
+                        value: _state.screenWakelock,
+                        onChanged: (v) => commit(() {
+                          _state.screenWakelock = v;
+                          _applyWakelock();
+                        }),
+                      ),
+
+                      const Divider(height: 24),
+
+                      // ---- 显示页码 ----
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('显示页码'),
+                        value: _state.showPageNumber,
+                        onChanged: (v) => commit(() => _state.showPageNumber = v),
+                      ),
+
+                      // ---- 底部区域 ----
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('底部区域'),
+                        subtitle: const Text('时间、电量、页码', style: TextStyle(fontSize: 12)),
+                        value: _state.showBottomBar,
+                        onChanged: (v) => commit(() => _state.showBottomBar = v),
+                      ),
+
+                      // ---- 顶部区域 ----
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('顶部区域'),
+                        subtitle: const Text('章节序号、章节名', style: TextStyle(fontSize: 12)),
+                        value: _state.showTopBar,
+                        onChanged: (v) => commit(() => _state.showTopBar = v),
+                      ),
+
+                      // ---- 音量键翻页 ----
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('音量键翻页'),
+                        value: _state.volumeKeyFlip,
+                        onChanged: (v) => commit(() => _state.volumeKeyFlip = v),
+                      ),
+
+                      // ---- 自动翻页间隔 ----
+                      if (!_state.isComic)
+                        _SettingRow(
+                          label: '翻页间隔',
+                          value: '${_state.autoPageInterval.toStringAsFixed(0)}秒',
                           child: Slider(
                             value: _state.autoPageInterval,
                             min: 3,
                             max: 60,
                             divisions: 57,
-                            onChanged: (value) =>
-                                commit(() => _state.autoPageInterval = value),
+                            label: _state.autoPageInterval.toStringAsFixed(0),
+                            onChanged: (v) => commit(
+                                () => _state.autoPageInterval = v),
                           ),
                         ),
-                      ),
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('目录'),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        Navigator.pop(sheetContext);
-                        _showChapterList(provider);
-                      },
-                    ),
-                  ],
-                ),
-              ),
+                    ],
+                  ),
+                );
+              },
             );
           },
         );
@@ -2260,5 +2347,86 @@ class _ReaderPageState extends State<ReaderPage> {
             chapterPosition: _state.chapterPosition);
       }
     }
+  }
+
+  void _applyWakelock() {
+    // wakelock 屏幕常亮——后续可接入 wakelock_plus 插件
+    // 当前为占位方法，预留设置入口
+  }
+}
+
+// ============================================================
+// 设置面板辅助组件
+// ============================================================
+
+/// 设置行：左侧标签 + 右侧控件
+class _SettingRow extends StatelessWidget {
+  final String label;
+  final String? value;
+  final Widget child;
+
+  const _SettingRow({
+    required this.label,
+    this.value,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 64,
+            child: Text(label, style: const TextStyle(fontSize: 14)),
+          ),
+          Expanded(child: child),
+          if (value != null)
+            SizedBox(
+              width: 48,
+              child: Text(
+                value!,
+                textAlign: TextAlign.end,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 选择芯片
+class _ChoiceChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ChoiceChip(this.label, this.selected, this.onTap);
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF00A88F) : Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13,
+            color: selected ? Colors.white : Colors.grey.shade700,
+            fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
   }
 }
