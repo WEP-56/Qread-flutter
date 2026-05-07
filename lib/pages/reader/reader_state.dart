@@ -4,6 +4,15 @@ import 'engine/engine.dart';
 import 'widgets/reader_theme.dart';
 import 'widgets/controller_overlay.dart';
 
+/// 翻页动画类型
+enum PageAnimType {
+  cover,      // 覆盖
+  slide,      // 滑动/左右
+  simulation, // 仿真/翻书
+  scroll,     // 滚动/上下
+  none,       // 无动画
+}
+
 /// 阅读器核心状态
 ///
 /// 将原 _ReaderPageState 中散落的全局变量集中到此类，
@@ -23,6 +32,7 @@ class ReaderState with ChangeNotifier {
   bool autoNext = true;
   String theme = 'light';
   String pageMode = 'paged';
+  PageAnimType pageAnimType = PageAnimType.cover;
 
   // ---- 更多设置（默认值） ----
   bool screenWakelock = true;   // 屏幕常亮

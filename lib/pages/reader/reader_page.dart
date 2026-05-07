@@ -43,6 +43,7 @@ class _ReaderPageState extends State<ReaderPage> {
   static const _keyFirstLineIndent = 'reader_first_line_indent';
   static const _keyHorizontalPadding = 'reader_horizontal_padding';
   static const _keyTopPadding = 'reader_top_padding';
+  static const _keyPageAnimType = 'reader_page_anim_type';
 
   late PageController _pageController;
   final ScrollController _comicScrollController = ScrollController();
@@ -117,6 +118,8 @@ class _ReaderPageState extends State<ReaderPage> {
       _state.firstLineIndent = prefs.getDouble(_keyFirstLineIndent) ?? 2.0;
       _state.horizontalPadding = prefs.getDouble(_keyHorizontalPadding) ?? 24.0;
       _state.topPadding = prefs.getDouble(_keyTopPadding) ?? 18.0;
+      final animIdx = prefs.getInt(_keyPageAnimType) ?? 0;
+      _state.pageAnimType = PageAnimType.values[animIdx.clamp(0, PageAnimType.values.length - 1)];
     });
   }
 
@@ -137,6 +140,7 @@ class _ReaderPageState extends State<ReaderPage> {
     await prefs.setDouble(_keyFirstLineIndent, _state.firstLineIndent);
     await prefs.setDouble(_keyHorizontalPadding, _state.horizontalPadding);
     await prefs.setDouble(_keyTopPadding, _state.topPadding);
+    await prefs.setInt(_keyPageAnimType, _state.pageAnimType.index);
   }
 
   // ============================================================
@@ -1913,44 +1917,77 @@ class _ReaderPageState extends State<ReaderPage> {
 
                     const SizedBox(height: 8),
 
-                    // ---- 翻页模式 ----
-                    _SettingRow(
-                      label: '翻页',
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                    // ---- 翻页动画 ----
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _ChoiceChip('覆盖', _state.pageMode == 'paged', () {
-                            commit(() => _state.pageMode = 'paged',
-                                rebuildPages: true);
-                          }),
-                          const SizedBox(width: 8),
-                          _ChoiceChip('滚动', _state.pageMode == 'scroll', () {
-                            commit(() => _state.pageMode = 'scroll',
-                                rebuildPages: true);
-                          }),
+                          const Text('翻页', style: TextStyle(fontSize: 14)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: [
+                              for (final anim in PageAnimType.values)
+                                _ChoiceChip(
+                                  _pageAnimLabel(anim),
+                                  _state.pageAnimType == anim,
+                                  () => commit(() {
+                                    _state.pageAnimType = anim;
+                                    // 滚动动画等同于 pageMode=scroll
+                                    if (anim == PageAnimType.scroll) {
+                                      _state.pageMode = 'scroll';
+                                    } else {
+                                      _state.pageMode = 'paged';
+                                    }
+                                  }, rebuildPages: true),
+                                ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
 
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 8),
 
-                    // ---- 主题 ----
-                    _SettingRow(
-                      label: '背景',
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                    // ---- 背景主题 ----
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _ChoiceChip('浅色', _state.theme == 'light', () {
-                            commit(() => _state.theme = 'light');
-                          }),
-                          const SizedBox(width: 6),
-                          _ChoiceChip('深色', _state.theme == 'dark', () {
-                            commit(() => _state.theme = 'dark');
-                          }),
-                          const SizedBox(width: 6),
-                          _ChoiceChip('护眼', _state.theme == 'sepia', () {
-                            commit(() => _state.theme = 'sepia');
-                          }),
+                          const Text('背景', style: TextStyle(fontSize: 14)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final preset in ReaderTheme.presets)
+                                _ThemeColorDot(
+                                  label: ReaderTheme.displayName(preset.name),
+                                  color: preset.background,
+                                  selected: _state.theme == preset.name,
+                                  onTap: () => commit(() => _state.theme = preset.name),
+                                ),
+                              // 自定义颜色
+                              _ThemeColorDot(
+                                label: '自定义',
+                                color: Colors.grey.shade300,
+                                selected: _state.theme.startsWith('custom_'),
+                                onTap: () async {
+                                  final color = await _showColorPicker(
+                                    _state.currentTheme.background,
+                                  );
+                                  if (color != null) {
+                                    final theme = ReaderTheme.custom(color);
+                                    commit(() => _state.theme = theme.name);
+                                  }
+                                },
+                                isCustom: true,
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -2572,6 +2609,49 @@ class _ReaderPageState extends State<ReaderPage> {
     // wakelock 屏幕常亮——后续可接入 wakelock_plus 插件
     // 当前为占位方法，预留设置入口
   }
+
+  /// 翻页动画类型显示名
+  String _pageAnimLabel(PageAnimType type) {
+    switch (type) {
+      case PageAnimType.cover:
+        return '覆盖';
+      case PageAnimType.slide:
+        return '滑动';
+      case PageAnimType.simulation:
+        return '仿真';
+      case PageAnimType.scroll:
+        return '滚动';
+      case PageAnimType.none:
+        return '无动画';
+    }
+  }
+
+  /// 显示颜色选择器
+  Future<Color?> _showColorPicker(Color initialColor) async {
+    Color selected = initialColor;
+    return showDialog<Color>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择背景颜色'),
+        content: SingleChildScrollView(
+          child: _ColorPickerWidget(
+            initialColor: initialColor,
+            onColorChanged: (color) => selected = color,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, selected),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ============================================================
@@ -2646,6 +2726,215 @@ class _ChoiceChip extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 主题颜色圆点选择器
+class _ThemeColorDot extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+  final bool isCustom;
+
+  const _ThemeColorDot({
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+    this.isCustom = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected ? const Color(0xFF00A88F) : Colors.grey.shade400,
+                width: selected ? 3 : 1,
+              ),
+              boxShadow: isCustom
+                  ? []
+                  : [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+            ),
+            child: isCustom
+                ? const Icon(Icons.add, color: Colors.grey, size: 20)
+                : (selected
+                    ? const Icon(Icons.check, color: Color(0xFF00A88F), size: 16)
+                    : null),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: selected ? const Color(0xFF00A88F) : Colors.grey.shade600,
+              fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 简易颜色选择器 Widget
+class _ColorPickerWidget extends StatefulWidget {
+  final Color initialColor;
+  final ValueChanged<Color> onColorChanged;
+
+  const _ColorPickerWidget({
+    required this.initialColor,
+    required this.onColorChanged,
+  });
+
+  @override
+  State<_ColorPickerWidget> createState() => _ColorPickerWidgetState();
+}
+
+class _ColorPickerWidgetState extends State<_ColorPickerWidget> {
+  late double _hue;
+  late double _saturation;
+  late double _lightness;
+
+  @override
+  void initState() {
+    super.initState();
+    final hsl = HSLColor.fromColor(widget.initialColor);
+    _hue = hsl.hue;
+    _saturation = hsl.saturation;
+    _lightness = hsl.lightness;
+  }
+
+  Color get _currentColor =>
+      HSLColor.fromAHSL(1.0, _hue, _saturation, _lightness).toColor();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 颜色预览
+        Container(
+          width: double.infinity,
+          height: 48,
+          decoration: BoxDecoration(
+            color: _currentColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // 色相滑杆
+        Row(
+          children: [
+            const SizedBox(width: 40, child: Text('色相')),
+            Expanded(
+              child: Slider(
+                value: _hue,
+                min: 0,
+                max: 360,
+                onChanged: (v) {
+                  setState(() => _hue = v);
+                  widget.onColorChanged(_currentColor);
+                },
+              ),
+            ),
+          ],
+        ),
+
+        // 饱和度滑杆
+        Row(
+          children: [
+            const SizedBox(width: 40, child: Text('饱和')),
+            Expanded(
+              child: Slider(
+                value: _saturation,
+                min: 0,
+                max: 1,
+                onChanged: (v) {
+                  setState(() => _saturation = v);
+                  widget.onColorChanged(_currentColor);
+                },
+              ),
+            ),
+          ],
+        ),
+
+        // 明度滑杆
+        Row(
+          children: [
+            const SizedBox(width: 40, child: Text('明度')),
+            Expanded(
+              child: Slider(
+                value: _lightness,
+                min: 0.05,
+                max: 0.95,
+                onChanged: (v) {
+                  setState(() => _lightness = v);
+                  widget.onColorChanged(_currentColor);
+                },
+              ),
+            ),
+          ],
+        ),
+
+        // 预设色块
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            Colors.white,
+            const Color(0xFFF7F1E6),
+            const Color(0xFFF4E7CF),
+            const Color(0xFFC2D8AA),
+            const Color(0xFFC0EDC6),
+            const Color(0xFFABCEE0),
+            const Color(0xFFDBB8E2),
+            const Color(0xFFD4B896),
+            const Color(0xFF101417),
+          ].map((c) {
+            return GestureDetector(
+              onTap: () {
+                final hsl = HSLColor.fromColor(c);
+                setState(() {
+                  _hue = hsl.hue;
+                  _saturation = hsl.saturation;
+                  _lightness = hsl.lightness;
+                });
+                widget.onColorChanged(_currentColor);
+              },
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: c,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.grey.shade400, width: 0.5),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
     );
   }
 }
