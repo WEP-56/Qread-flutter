@@ -813,6 +813,7 @@ class _SimulationTurnPainter extends CustomPainter {
 
   void _drawAreaBShadow(Canvas canvas) {
     canvas.save();
+    canvas.clipPath(geometry.areaBPath);
     canvas.translate(geometry.startPoint1.dx, geometry.startPoint1.dy);
     canvas.rotate(
       math.atan2(
@@ -825,10 +826,10 @@ class _SimulationTurnPainter extends CustomPainter {
     final rect = Rect.fromLTRB(left, 0, right, geometry.maxLength);
     final gradient = geometry.isRtAndLb
         ? const LinearGradient(
-            colors: [Color(0x55111111), Color(0x00111111)],
+            colors: [Color(0x33111111), Color(0x00111111)],
           )
         : const LinearGradient(
-            colors: [Color(0x00111111), Color(0x55111111)],
+            colors: [Color(0x00111111), Color(0x33111111)],
           );
     canvas.drawRect(
       rect,
@@ -900,6 +901,7 @@ class _SimulationTurnGeometry {
   final Offset vertexPoint1;
   final Offset vertexPoint2;
   final Path areaAPath;
+  final Path areaBPath;
   final Path areaCPath;
   final Matrix4 reflectionMatrix;
   final double touchToCornerDistance;
@@ -923,6 +925,7 @@ class _SimulationTurnGeometry {
     required this.vertexPoint1,
     required this.vertexPoint2,
     required this.areaAPath,
+    required this.areaBPath,
     required this.areaCPath,
     required this.reflectionMatrix,
     required this.touchToCornerDistance,
@@ -1086,13 +1089,22 @@ class _SimulationTurnGeometry {
       screenPath,
       areaAPath,
     );
-    final areaCPath = Path.combine(
+    final clippedAreaC = Path.combine(
       PathOperation.intersect,
       screenPath,
       Path.combine(
         PathOperation.intersect,
         backTrianglePath,
         areaBottomPath,
+      ),
+    );
+    final areaBPath = Path.combine(
+      PathOperation.difference,
+      screenPath,
+      Path.combine(
+        PathOperation.union,
+        clippedAreaA,
+        clippedAreaC,
       ),
     );
 
@@ -1152,7 +1164,8 @@ class _SimulationTurnGeometry {
       vertexPoint1: vertexPoint1,
       vertexPoint2: vertexPoint2,
       areaAPath: clippedAreaA,
-      areaCPath: areaCPath,
+      areaBPath: areaBPath,
+      areaCPath: clippedAreaC,
       reflectionMatrix: reflectionMatrix,
       touchToCornerDistance: touchToCornerDistance,
       maxLength: math.sqrt(
