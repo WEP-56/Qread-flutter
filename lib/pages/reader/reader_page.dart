@@ -1389,13 +1389,28 @@ class _ReaderPageState extends State<ReaderPage> {
     _stopAutoPageMode();
     _prepareTtsParagraphs(text);
     if (_state.paragraphs.isEmpty) return;
+
+    // 找到当前页面第一个段落作为 TTS 起始位置
+    int startParagraphIndex;
+    if (_state.ttsParagraphIndex >= 0) {
+      // 已有 TTS 位置，继续使用
+      startParagraphIndex = _state.ttsParagraphIndex;
+    } else if (_state.pages.isNotEmpty && _state.currentPage < _state.pages.length) {
+      // 从当前页面的第一个段落开始
+      final currentPageLines = _state.pages[_state.currentPage].lines;
+      startParagraphIndex = currentPageLines.isNotEmpty
+          ? currentPageLines.first.paragraphIndex
+          : 0;
+    } else {
+      startParagraphIndex = 0;
+    }
+
     setState(() {
       _state.ttsReading = true;
       _state.continueTtsOnNextChapter = false;
       _state.showController = true;
     });
-    await _speakParagraphAt(
-        _state.ttsParagraphIndex >= 0 ? _state.ttsParagraphIndex : 0);
+    await _speakParagraphAt(startParagraphIndex);
   }
 
   void _prepareTtsParagraphs(String text) {

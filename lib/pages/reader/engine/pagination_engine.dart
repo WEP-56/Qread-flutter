@@ -2,18 +2,12 @@ import 'package:flutter/material.dart';
 
 import 'models.dart';
 
-/// 行级分页引擎 v3
+/// 行级分页引擎 v4
 ///
-/// 核心设计参照 legado 的 TextChapterLayout：
-/// 1. 将段落文本通过 TextPainter 拆成行
-/// 2. 逐行累加高度，当累计高度 + 下一行高度 > 可用高度时换页
-/// 3. 段落自然在行边界处跨页，无需段中截断的特殊处理
-///
-/// v3 修复：
-/// - 精确测量章节头/页脚高度，消除 32px 溢出
-/// - 移除孤字检测逻辑（过于激进导致段落异常分段）
-/// - 使用 TextPainter 实测行高而非 fontSize*lineHeight 估算
-/// - 增加安全余量确保内容不溢出
+/// 核心原则：分页引擎的高度计算必须与 Flutter 渲染端完全一致。
+/// Flutter Text 的行框高度 = fontSize * height（TextStyle.height），
+/// 所以分页引擎也用这个公式，而非 TextPainter.computeLineMetrics().height
+/// （后者返回的是 baseline 间距，不包含行框的上下留白）。
 
 class PaginationEngine {
   /// 页面布局常量
@@ -24,8 +18,13 @@ class PaginationEngine {
   static const double paragraphSpacing = 10.0;
   static const double lineSpacing = 2.0;
 
-  /// 安全余量：防止浮点累积误差导致的溢出
-  static const double safetyMargin = 4.0;
+  /// 章节头样式（与 content_renderer.dart 一致）
+  static const double headerFontSize = 12.0;
+  static const double headerLineHeight = 1.2;
+
+  /// 页脚样式（与 content_renderer.dart 一致）
+  static const double footerFontSize = 11.0;
+  static const double footerLineHeight = 1.2;
 
   /// 计算章节的完整分页布局
   ChapterLayout paginate({
@@ -55,9 +54,11 @@ class PaginationEngine {
     // 2. 计算可用区域
     final availableWidth = viewportSize.width - horizontalPadding * 2;
 
-    // 用 TextPainter 精确测量章节头和页脚高度
-    final headerHeight = _measureHeaderHeight(chapterTitle ?? '', fontSize);
-    final footerHeight = _measureFooterHeight(fontSize);
+    // 章节头高度：12 * 1.2 = 14.4
+    final headerHeight =
+        (chapterTitle?.isNotEmpty == true) ? headerFontSize * headerLineHeight : 0.0;
+    // 页脚高度：11 * 1.2 = 13.2
+    final footerHeight = footerFontSize * footerLineHeight;
 
     final availableHeight = viewportSize.height -
         safeTop -
@@ -66,8 +67,7 @@ class PaginationEngine {
         bottomPadding -
         headerHeight -
         footerHeight -
-        headerBottomSpacing -
-        safetyMargin;
+        headerBottomSpacing;
 
     // 3. 逐段落 → 逐行 → 分页
     final pages = <PageSlice>[];
@@ -79,7 +79,6 @@ class PaginationEngine {
       if (currentLines.isEmpty) return;
       final pageIndex = pages.length;
 
-      // 计算页面起止位置
       int startPos = 0;
       int endPos = 0;
       for (final line in currentLines) {
@@ -109,7 +108,6 @@ class PaginationEngine {
     }
 
     for (final paragraph in paragraphs) {
-      // 3a. 将段落拆成行
       final lines = _splitParagraphToLines(
         paragraph: paragraph,
         fontSize: fontSize,
@@ -117,27 +115,24 @@ class PaginationEngine {
         maxWidth: availableWidth,
       );
 
-      // 3b. 逐行添加到当前页
       for (int i = 0; i < lines.length; i++) {
         final line = lines[i];
-        // 行实际占用高度 = line.height（TextPainter 实测） + 间距
+        // 行框高度 = fontSize * lineHeight（与 Text widget 渲染一致）
+        // 加上行间距：段内 2px，段尾 10px
         final isLastLine = line.isLastLineOfParagraph;
         final lineMarginBottom = isLastLine ? paragraphSpacing : lineSpacing;
         final lineTotalHeight = line.height + lineMarginBottom;
 
-        // 如果加上这行会超出可用高度，先提交当前页
         if (currentLines.isNotEmpty &&
             currentHeight + lineTotalHeight > availableHeight) {
           commitPage();
         }
 
-        // 如果当前页为空且单行就超高（极端情况），仍然加入
         currentLines.add(line);
         currentHeight += lineTotalHeight;
       }
     }
 
-    // 提交最后一页
     commitPage();
 
     return ChapterLayout(
@@ -149,41 +144,10 @@ class PaginationEngine {
     );
   }
 
-  /// 用 TextPainter 精确测量章节头高度
-  double _measureHeaderHeight(String chapterTitle, double fontSize) {
-    if (chapterTitle.isEmpty) return 0;
-    final painter = TextPainter(
-      text: TextSpan(
-        text: chapterTitle,
-        style: TextStyle(fontSize: 12, height: 1.2),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout(maxWidth: double.infinity);
-    return painter.height;
-  }
-
-  /// 用 TextPainter 精确测量页脚高度
-  double _measureFooterHeight(double fontSize) {
-    // 页脚包含时间和电池信息，字号 11
-    final painter = TextPainter(
-      text: TextSpan(
-        text: '00:00  1/1  100%',
-        style: TextStyle(fontSize: 11, height: 1.2),
-      ),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout(maxWidth: double.infinity);
-    // 加上电池图标的高度（约 13px）
-    return painter.height > 13 ? painter.height : 13.0;
-  }
-
   /// 将段落拆分为 TextLine 列表
   ///
-  /// 核心方法：使用 TextPainter 的 computeLineMetrics 获取行数，
-  /// 然后用 getLineBoundary 逐行获取字符范围。
-  /// 行文本直接使用 fullText 的子串，在渲染时根据 isFirstLineOfParagraph
-  /// 决定是否加缩进前缀，避免偏移映射错误。
+  /// TextPainter 只用于确定行拆分（哪些字符在同一行），
+  /// 行高使用 fontSize * lineHeight 公式计算（与渲染端一致）。
   List<TextLine> _splitParagraphToLines({
     required ReaderParagraph paragraph,
     required double fontSize,
@@ -194,13 +158,13 @@ class PaginationEngine {
     final effectiveFontSize = isTitle ? fontSize + 4 : fontSize;
     final effectiveLineHeight = isTitle ? 1.45 : lineHeight;
     final fontWeight = isTitle ? FontWeight.w600 : FontWeight.normal;
+    // 行框高度 = fontSize * lineHeight（与 Text widget 一致）
+    final lineBoxHeight = effectiveFontSize * effectiveLineHeight;
 
-    // 首行加缩进——与渲染端保持一致
     final fullText =
         isTitle ? paragraph.text : '\u3000\u3000${paragraph.text}';
-    final indentLength = isTitle ? 0 : 2; // \u3000\u3000 占2个字符
+    final indentLength = isTitle ? 0 : 2;
 
-    // 使用 TextPainter 计算行拆分
     final painter = TextPainter(
       text: TextSpan(
         text: fullText,
@@ -220,7 +184,6 @@ class PaginationEngine {
       return [];
     }
 
-    // 逐行获取边界
     int currentOffset = 0;
     final textLength = fullText.length;
     final result = <TextLine>[];
@@ -237,29 +200,24 @@ class PaginationEngine {
       final lineStart = boundary.start;
       final lineEnd = boundary.end;
 
-      // 防御：跳过空行
       if (lineStart >= lineEnd || lineEnd <= currentOffset) {
         currentOffset++;
         continue;
       }
 
-      // 从 fullText 中截取本行文本（含缩进前缀）
       final rawLineText =
           fullText.substring(lineStart.clamp(0, textLength), lineEnd.clamp(0, textLength));
 
-      // 跳过纯空白行
       if (rawLineText.trim().isEmpty && lineIndex > 0) {
         currentOffset = lineEnd;
         continue;
       }
 
-      // 计算在原文 paragraph.text 中的偏移
       final originalStart =
           (lineStart - indentLength).clamp(0, paragraph.text.length);
       final originalEnd =
           (lineEnd - indentLength).clamp(0, paragraph.text.length);
 
-      // 行显示文本：去掉缩进前缀部分
       String displayText;
       if (isTitle) {
         displayText = rawLineText;
@@ -273,16 +231,12 @@ class PaginationEngine {
         }
       }
 
-      // 跳过截取后为空的行
       if (displayText.trim().isEmpty && lineIndex > 0) {
         currentOffset = lineEnd;
         continue;
       }
 
       final isLastLine = lineIndex == lineMetrics.length - 1;
-
-      // 使用 TextPainter 实测的行高（更精确）
-      final measuredHeight = lineMetrics[lineIndex].height;
 
       result.add(TextLine(
         paragraphIndex: paragraph.index,
@@ -292,7 +246,7 @@ class PaginationEngine {
         isTitle: isTitle,
         isFirstLineOfParagraph: lineIndex == 0,
         isLastLineOfParagraph: isLastLine,
-        height: measuredHeight,
+        height: lineBoxHeight, // 使用公式计算，与渲染端一致
       ));
 
       currentOffset = lineEnd;
@@ -362,7 +316,6 @@ class PaginationEngine {
   /// 根据位置查找页码
   int pageIndexForPosition(List<PageSlice> pages, int position) {
     if (pages.isEmpty) return 0;
-    // 特殊值：表示跳到末尾
     if (position >= (1 << 29)) {
       return pages.length - 1;
     }
