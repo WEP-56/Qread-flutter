@@ -698,25 +698,120 @@ class _SimulationTurnPainter extends CustomPainter {
   }
 
   void _drawAreaAShadow(Canvas canvas) {
-    final shadowPath = Path()
-      ..moveTo(geometry.touchPoint.dx, geometry.touchPoint.dy)
-      ..lineTo(geometry.controlPoint2.dx, geometry.controlPoint2.dy)
+    _drawAreaALeftShadow(canvas);
+    _drawAreaARightShadow(canvas);
+  }
+
+  void _drawAreaALeftShadow(Canvas canvas) {
+    final shadowWidth = geometry.leftShadowWidth;
+    if (shadowWidth <= 0) return;
+
+    final maxShadowWidth = math.max(
+      geometry.leftShadowWidth,
+      geometry.rightShadowWidth,
+    );
+    final helperPath = Path()
+      ..moveTo(
+          geometry.touchPoint.dx - maxShadowWidth / 2, geometry.touchPoint.dy)
+      ..lineTo(geometry.vertexPoint1.dx, geometry.vertexPoint1.dy)
       ..lineTo(geometry.controlPoint1.dx, geometry.controlPoint1.dy)
+      ..lineTo(geometry.touchPoint.dx, geometry.touchPoint.dy)
       ..close();
-    canvas.drawShadow(shadowPath, Colors.black, 6, true);
+
+    final left = geometry.isTopRight
+        ? geometry.controlPoint1.dx - shadowWidth / 2
+        : geometry.controlPoint1.dx;
+    final right = geometry.isTopRight
+        ? geometry.controlPoint1.dx
+        : geometry.controlPoint1.dx + shadowWidth / 2;
+    final gradient = geometry.isTopRight
+        ? const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [Color(0x01333333), Color(0x33333333)],
+          )
+        : const LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [Color(0x33333333), Color(0x01333333)],
+          );
+
+    canvas.save();
+    canvas.clipPath(geometry.areaAPath);
+    canvas.clipPath(helperPath);
+    canvas.translate(geometry.controlPoint1.dx, geometry.controlPoint1.dy);
+    canvas.rotate(
+      math.atan2(
+        geometry.controlPoint1.dx - geometry.touchPoint.dx,
+        geometry.touchPoint.dy - geometry.controlPoint1.dy,
+      ),
+    );
+    canvas.translate(-geometry.controlPoint1.dx, -geometry.controlPoint1.dy);
+    final rect = Rect.fromLTRB(
+      left,
+      geometry.controlPoint1.dy,
+      right,
+      geometry.controlPoint1.dy + geometry.viewportHeight,
+    );
+    canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
+    canvas.restore();
+  }
+
+  void _drawAreaARightShadow(Canvas canvas) {
+    final shadowWidth = geometry.rightShadowWidth;
+    if (shadowWidth <= 0) return;
+
+    final maxShadowWidth = math.max(
+      geometry.leftShadowWidth,
+      geometry.rightShadowWidth,
+    );
+    final helperPath = Path()
+      ..moveTo(
+          geometry.touchPoint.dx - maxShadowWidth / 2, geometry.touchPoint.dy)
+      ..lineTo(geometry.controlPoint2.dx, geometry.controlPoint2.dy)
+      ..lineTo(geometry.touchPoint.dx, geometry.touchPoint.dy)
+      ..close();
+
+    final rect = Rect.fromLTRB(
+      geometry.controlPoint2.dx,
+      geometry.isTopRight
+          ? geometry.controlPoint2.dy - shadowWidth / 2
+          : geometry.controlPoint2.dy,
+      geometry.controlPoint2.dx + geometry.maxLength,
+      geometry.isTopRight
+          ? geometry.controlPoint2.dy
+          : geometry.controlPoint2.dy + shadowWidth / 2,
+    );
+    final gradient = geometry.isTopRight
+        ? const LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [Color(0x22333333), Color(0x01333333), Color(0x01333333)],
+            stops: [0.0, 0.65, 1.0],
+          )
+        : const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x22333333), Color(0x01333333), Color(0x01333333)],
+            stops: [0.0, 0.65, 1.0],
+          );
+
+    canvas.save();
+    canvas.clipPath(geometry.areaAPath);
+    canvas.clipPath(helperPath);
+    canvas.translate(geometry.controlPoint2.dx, geometry.controlPoint2.dy);
+    canvas.rotate(
+      math.atan2(
+        geometry.touchPoint.dy - geometry.controlPoint2.dy,
+        geometry.touchPoint.dx - geometry.controlPoint2.dx,
+      ),
+    );
+    canvas.translate(-geometry.controlPoint2.dx, -geometry.controlPoint2.dy);
+    canvas.drawRect(rect, Paint()..shader = gradient.createShader(rect));
+    canvas.restore();
   }
 
   void _drawAreaBShadow(Canvas canvas) {
-    final left = geometry.isRtAndLb ? 0.0 : -geometry.touchToCornerDistance / 4;
-    final right = geometry.isRtAndLb ? geometry.touchToCornerDistance / 4 : 0.0;
-    final gradient = geometry.isRtAndLb
-        ? const LinearGradient(
-            colors: [Color(0xAA000000), Colors.transparent],
-          )
-        : const LinearGradient(
-            colors: [Colors.transparent, Color(0xAA000000)],
-          );
-
     canvas.save();
     canvas.translate(geometry.startPoint1.dx, geometry.startPoint1.dy);
     canvas.rotate(
@@ -725,7 +820,16 @@ class _SimulationTurnPainter extends CustomPainter {
         geometry.controlPoint2.dy - geometry.cornerY,
       ),
     );
+    final left = geometry.isRtAndLb ? 0.0 : -geometry.touchToCornerDistance / 4;
+    final right = geometry.isRtAndLb ? geometry.touchToCornerDistance / 4 : 0.0;
     final rect = Rect.fromLTRB(left, 0, right, geometry.maxLength);
+    final gradient = geometry.isRtAndLb
+        ? const LinearGradient(
+            colors: [Color(0x55111111), Color(0x00111111)],
+          )
+        : const LinearGradient(
+            colors: [Color(0x00111111), Color(0x55111111)],
+          );
     canvas.drawRect(
       rect,
       Paint()
@@ -742,7 +846,11 @@ class _SimulationTurnPainter extends CustomPainter {
     final f2 = (midJh - geometry.controlPoint2.dy).abs();
     final width = math.min(f1, f2) + 1;
 
+    final left = geometry.isTopRight ? 30.0 : -(width + 1);
+    final right = geometry.isTopRight ? width + 1 : -30.0;
+
     canvas.save();
+    canvas.clipPath(geometry.areaCPath);
     canvas.translate(geometry.startPoint1.dx, geometry.startPoint1.dy);
     canvas.rotate(
       math.atan2(
@@ -750,12 +858,20 @@ class _SimulationTurnPainter extends CustomPainter {
         geometry.controlPoint2.dy - geometry.cornerY,
       ),
     );
-    final rect = Rect.fromLTRB(0, 0, width, geometry.maxLength);
+    canvas.translate(-geometry.startPoint1.dx, -geometry.startPoint1.dy);
+    final rect = Rect.fromLTRB(
+      geometry.startPoint1.dx + left,
+      geometry.startPoint1.dy,
+      geometry.startPoint1.dx + right,
+      geometry.startPoint1.dy + geometry.maxLength,
+    );
     canvas.drawRect(
       rect,
       Paint()
         ..shader = const LinearGradient(
-          colors: [Colors.transparent, Color(0xAA000000)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: [Color(0x00333333), Color(0x55333333)],
         ).createShader(rect)
         ..isAntiAlias = true,
     );
@@ -788,6 +904,10 @@ class _SimulationTurnGeometry {
   final Matrix4 reflectionMatrix;
   final double touchToCornerDistance;
   final double maxLength;
+  final double leftShadowWidth;
+  final double rightShadowWidth;
+  final double viewportHeight;
+  final bool isTopRight;
 
   const _SimulationTurnGeometry({
     required this.touchPoint,
@@ -807,6 +927,10 @@ class _SimulationTurnGeometry {
     required this.reflectionMatrix,
     required this.touchToCornerDistance,
     required this.maxLength,
+    required this.leftShadowWidth,
+    required this.rightShadowWidth,
+    required this.viewportHeight,
+    required this.isTopRight,
   });
 
   static _SimulationTurnGeometry compute({
@@ -978,6 +1102,22 @@ class _SimulationTurnGeometry {
     );
     final sinAngle = (cornerX - controlPoint1.dx) / _safeDivisor(distance);
     final cosAngle = (controlPoint2.dy - cornerY) / _safeDivisor(distance);
+    final leftA = touch.dy - controlPoint1.dy;
+    final leftB = controlPoint1.dx - touch.dx;
+    final leftC = touch.dx * controlPoint1.dy - controlPoint1.dx * touch.dy;
+    final leftShadowWidth =
+        ((leftA * vertexPoint1.dx + leftB * vertexPoint1.dy + leftC) /
+                    math.sqrt(leftA * leftA + leftB * leftB))
+                .abs() *
+            2;
+    final rightA = touch.dy - controlPoint2.dy;
+    final rightB = controlPoint2.dx - touch.dx;
+    final rightC = touch.dx * controlPoint2.dy - controlPoint2.dx * touch.dy;
+    final rightShadowWidth =
+        ((rightA * vertexPoint2.dx + rightB * vertexPoint2.dy + rightC) /
+                    math.sqrt(rightA * rightA + rightB * rightB))
+                .abs() *
+            2;
     final reflectionMatrix = Matrix4.identity();
     reflectionMatrix.setValues(
       -(1 - 2 * sinAngle * sinAngle),
@@ -1018,6 +1158,10 @@ class _SimulationTurnGeometry {
       maxLength: math.sqrt(
         math.pow(size.width, 2) + math.pow(size.height, 2),
       ),
+      leftShadowWidth: leftShadowWidth,
+      rightShadowWidth: rightShadowWidth,
+      viewportHeight: size.height,
+      isTopRight: cornerX == size.width && cornerY == 0,
     );
   }
 

@@ -32,7 +32,8 @@ class ContentRenderer {
     double firstLineIndent = 2.0,
   }) {
     return Padding(
-      padding: EdgeInsets.fromLTRB(horizontalPadding, topPadding, horizontalPadding, showBottomBar ? 10.0 : 0.0),
+      padding: EdgeInsets.fromLTRB(horizontalPadding, topPadding,
+          horizontalPadding, showBottomBar ? 10.0 : 0.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -41,20 +42,23 @@ class ContentRenderer {
           // 使用 Expanded 限制文字区域高度，内部用 ClipRect 裁剪
           Expanded(
             child: ClipRect(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (final line in page.lines)
-                    _buildTextLine(
-                      line: line,
-                      theme: theme,
-                      fontSize: fontSize,
-                      lineHeight: lineHeight,
-                      ttsParagraphIndex: ttsParagraphIndex,
-                      paragraphSpacing: paragraphSpacing,
-                      firstLineIndent: firstLineIndent,
-                    ),
-                ],
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final line in page.lines)
+                      _buildTextLine(
+                        line: line,
+                        theme: theme,
+                        fontSize: fontSize,
+                        lineHeight: lineHeight,
+                        ttsParagraphIndex: ttsParagraphIndex,
+                        paragraphSpacing: paragraphSpacing,
+                        firstLineIndent: firstLineIndent,
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -99,8 +103,7 @@ class ContentRenderer {
     final isHighlighted = line.paragraphIndex == ttsParagraphIndex;
     final effectiveFontSize = line.isTitle ? fontSize + 4 : fontSize;
     final effectiveLineHeight = line.isTitle ? 1.45 : lineHeight;
-    final fontWeight =
-        line.isTitle ? FontWeight.w600 : FontWeight.normal;
+    final fontWeight = line.isTitle ? FontWeight.w600 : FontWeight.normal;
     final effectiveColor = isHighlighted ? theme.highlight : theme.text;
 
     // 首行缩进
@@ -168,12 +171,14 @@ class ContentRenderer {
       children: [
         Text(
           timeLabel,
-          style: TextStyle(fontSize: 11, height: 1.2, color: theme.secondaryText),
+          style:
+              TextStyle(fontSize: 11, height: 1.2, color: theme.secondaryText),
         ),
         const Spacer(),
         Text(
           pageIndicator,
-          style: TextStyle(fontSize: 11, height: 1.2, color: theme.secondaryText),
+          style:
+              TextStyle(fontSize: 11, height: 1.2, color: theme.secondaryText),
         ),
         const Spacer(),
         Row(
@@ -183,7 +188,8 @@ class ContentRenderer {
             const SizedBox(width: 4),
             Text(
               batteryLabel,
-              style: TextStyle(fontSize: 11, height: 1.2, color: theme.secondaryText),
+              style: TextStyle(
+                  fontSize: 11, height: 1.2, color: theme.secondaryText),
             ),
           ],
         ),
