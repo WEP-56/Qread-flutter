@@ -40,7 +40,6 @@ class _PagedReaderCommand {
   });
 }
 
-/// 翻页模式阅读器
 class PagedReader extends StatefulWidget {
   final List<PageSlice> pages;
   final PageController pageController;
@@ -112,6 +111,11 @@ class _PagedReaderState extends State<PagedReader>
   double _progress = 0.0;
   double _dragStartX = 0.0;
   bool _dragging = false;
+  Offset _touchPoint = Offset.zero;
+  Offset _animationTouchBegin = Offset.zero;
+  Offset _animationTouchEnd = Offset.zero;
+  Size? _lastViewportSize;
+
   ui.Image? _capturedCurrentImage;
   Object? _captureSignature;
   Object? _capturedImageSignature;
@@ -175,6 +179,11 @@ class _PagedReaderState extends State<PagedReader>
     _turnDirection = pageDelta > 0 ? 1 : -1;
     _progress = command.animated ? 0.0 : 1.0;
 
+    if (widget.animType == PageAnimType.simulation) {
+      final size = _lastViewportSize ?? MediaQuery.sizeOf(context);
+      _touchPoint = _defaultSimulationTouch(size);
+    }
+
     if (!command.animated) {
       widget.onPageChanged(command.page);
       _resetTurnState();
@@ -200,7 +209,6 @@ class _PagedReaderState extends State<PagedReader>
   void _scheduleCaptureIfNeeded() {
     if (widget.animType != PageAnimType.simulation || _isTurning) return;
     final signature = _buildCaptureSignature();
-    if (_capturedCurrentImage != null && _captureSignature == signature) return;
     if (_capturedImageSignature == signature && _capturedCurrentImage != null) {
       return;
     }
@@ -250,6 +258,19 @@ class _PagedReaderState extends State<PagedReader>
 
   void _handleAnimationTick() {
     final eased = Curves.easeOutCubic.transform(_animationController.value);
+    if (widget.animType == PageAnimType.simulation && _targetPage != null) {
+      final size = _lastViewportSize ?? MediaQuery.sizeOf(context);
+      setState(() {
+        _touchPoint = _normalizeSimulationTouch(
+          Offset.lerp(_animationTouchBegin, _animationTouchEnd, eased) ??
+              _animationTouchEnd,
+          size,
+        );
+        _progress = _simulationProgressForTouch(_touchPoint, size);
+      });
+      return;
+    }
+
     setState(() {
       _progress =
           lerpDouble(_animationFrom, _animationTo, eased) ?? _animationTo;
@@ -279,6 +300,15 @@ class _PagedReaderState extends State<PagedReader>
   }
 
   void _startAnimation(double target, {required bool commit}) {
+    if (widget.animType == PageAnimType.simulation) {
+      final size = _lastViewportSize ?? MediaQuery.sizeOf(context);
+      final endTouch = target >= 1
+          ? _simulationConfirmTouch(size)
+          : _simulationCancelTouch(size);
+      _startSimulationTouchAnimation(endTouch, commit: commit);
+      return;
+    }
+
     _animationFrom = _progress;
     _animationTo = target;
     _commitOnAnimationEnd = commit;
@@ -286,6 +316,50 @@ class _PagedReaderState extends State<PagedReader>
     _animationController.duration =
         Duration(milliseconds: (180 + 140 * distance).round());
     _animationController.forward(from: 0.0);
+  }
+
+  void _startSimulationTouchAnimation(
+    Offset endTouch, {
+    required bool commit,
+  }) {
+    _animationTouchBegin = _touchPoint;
+    _animationTouchEnd = endTouch;
+    _commitOnAnimationEnd = commit;
+    _animationController.duration = const Duration(milliseconds: 320);
+    _animationController.forward(from: 0.0);
+  }
+
+  Offset _defaultSimulationTouch(Size size) {
+    final x = _turnDirection > 0 ? size.width * 0.88 : size.width * 0.12;
+    final y = size.height * 0.88;
+    return _normalizeSimulationTouch(Offset(x, y), size);
+  }
+
+  Offset _simulationConfirmTouch(Size size) {
+    final cornerY = _touchPoint.dy <= size.height / 2 ? 1.0 : size.height - 1;
+    final x = _turnDirection > 0 ? -size.width / 2 : size.width * 1.5;
+    return Offset(x, cornerY);
+  }
+
+  Offset _simulationCancelTouch(Size size) {
+    final x = _turnDirection > 0 ? size.width - 1 : 1.0;
+    final y = _touchPoint.dy <= size.height / 2 ? 1.0 : size.height - 1;
+    return Offset(x, y);
+  }
+
+  Offset _normalizeSimulationTouch(Offset touch, Size size) {
+    return Offset(
+      touch.dx.clamp(-size.width * 0.6, size.width * 1.6),
+      touch.dy.clamp(1.0, math.max(1.0, size.height - 1.0)),
+    );
+  }
+
+  double _simulationProgressForTouch(Offset touch, Size size) {
+    if (size.width <= 0) return _progress;
+    if (_turnDirection > 0) {
+      return ((size.width - touch.dx) / (size.width * 1.5)).clamp(0.0, 1.0);
+    }
+    return (touch.dx / (size.width * 1.5)).clamp(0.0, 1.0);
   }
 
   Widget _buildPageBody(int index) {
@@ -319,6 +393,10 @@ class _PagedReaderState extends State<PagedReader>
     _animationController.stop();
     _basePage = widget.currentPage;
     _dragStartX = details.localPosition.dx;
+    _touchPoint = _normalizeSimulationTouch(
+      details.localPosition,
+      _lastViewportSize ?? MediaQuery.sizeOf(context),
+    );
     _dragging = true;
     _turnDirection = 0;
     _targetPage = null;
@@ -328,6 +406,7 @@ class _PagedReaderState extends State<PagedReader>
   void _onHorizontalDragUpdate(DragUpdateDetails details, double width) {
     if (!_dragging || width <= 0) return;
     final dx = details.localPosition.dx - _dragStartX;
+    final size = _lastViewportSize ?? MediaQuery.sizeOf(context);
 
     if (_turnDirection == 0 && dx.abs() >= _dragTrigger) {
       final direction = dx < 0 ? 1 : -1;
@@ -339,6 +418,7 @@ class _PagedReaderState extends State<PagedReader>
       _turnDirection = direction;
       _targetPage = targetPage;
       if (widget.animType == PageAnimType.simulation) {
+        _touchPoint = _normalizeSimulationTouch(details.localPosition, size);
         _scheduleCaptureIfNeeded();
       }
     }
@@ -348,6 +428,9 @@ class _PagedReaderState extends State<PagedReader>
     final rawProgress = _turnDirection > 0 ? -dx / width : dx / width;
     setState(() {
       _progress = rawProgress.clamp(0.0, 1.0);
+      if (widget.animType == PageAnimType.simulation) {
+        _touchPoint = _normalizeSimulationTouch(details.localPosition, size);
+      }
     });
   }
 
@@ -392,13 +475,17 @@ class _PagedReaderState extends State<PagedReader>
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
+        _lastViewportSize = size;
+
         final currentIndex = _isTurning ? _basePage : widget.currentPage;
         final baseCurrentChild = _buildPageBody(currentIndex);
         final currentChild =
             widget.animType == PageAnimType.simulation && !_isTurning
                 ? RepaintBoundary(key: _captureKey, child: baseCurrentChild)
                 : baseCurrentChild;
+
         _scheduleCaptureIfNeeded();
+
         if (!_isTurning || _targetPage == null || _turnDirection == 0) {
           return GestureDetector(
             behavior: HitTestBehavior.translucent,
@@ -492,15 +579,16 @@ class _PagedReaderState extends State<PagedReader>
       return _buildCoverCurrentLayer(size, currentChild);
     }
 
-    return RepaintBoundary(
-      child: CustomPaint(
-        size: size,
-        painter: _SimulationCurlPainter(
-          image: image,
-          progress: _progress,
-          fromRightEdge: _turnDirection > 0,
-          backgroundColor: widget.theme.background,
+    return CustomPaint(
+      size: size,
+      painter: _SimulationTurnPainter(
+        image: image,
+        geometry: _SimulationTurnGeometry.compute(
+          size: size,
+          touchPoint: _touchPoint,
+          fromNext: _turnDirection > 0,
         ),
+        backgroundColor: widget.theme.background,
       ),
     );
   }
@@ -546,110 +634,436 @@ class _PagedReaderState extends State<PagedReader>
   }
 }
 
-class _SimulationCurlPainter extends CustomPainter {
+class _SimulationTurnPainter extends CustomPainter {
   final ui.Image image;
-  final double progress;
-  final bool fromRightEdge;
+  final _SimulationTurnGeometry geometry;
   final Color backgroundColor;
 
-  const _SimulationCurlPainter({
+  const _SimulationTurnPainter({
     required this.image,
-    required this.progress,
-    required this.fromRightEdge,
+    required this.geometry,
     required this.backgroundColor,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (size.width <= 0 ||
-        size.height <= 0 ||
-        image.width <= 0 ||
-        image.height <= 0) {
-      return;
-    }
+    if (image.width <= 0 || image.height <= 0) return;
 
-    final turnProgress = progress.clamp(0.0, 1.0);
-    final visibleWidth = size.width * (1 - turnProgress);
-    if (visibleWidth <= 0) {
-      return;
-    }
+    final fullImageRect = Rect.fromLTWH(
+      0,
+      0,
+      image.width.toDouble(),
+      image.height.toDouble(),
+    );
+    final fullCanvasRect = Rect.fromLTWH(0, 0, size.width, size.height);
 
-    final curlRadius = size.width * math.sin(turnProgress * math.pi) * 0.12 +
-        size.width * 0.04;
-    const segments = 88;
-    final segmentSize = visibleWidth / segments;
+    canvas.save();
+    canvas.clipPath(geometry.areaAPath);
+    canvas.drawImageRect(
+      image,
+      fullImageRect,
+      fullCanvasRect,
+      Paint()
+        ..isAntiAlias = true
+        ..filterQuality = FilterQuality.medium,
+    );
+    _drawAreaAShadow(canvas);
+    canvas.restore();
 
-    for (var index = 0; index < segments; index++) {
-      final start = index * segmentSize;
-      final end = math.min(visibleWidth, (index + 1) * segmentSize);
-      if (end <= start) continue;
+    canvas.save();
+    canvas.clipPath(geometry.areaCPath);
+    canvas.drawPaint(Paint()..color = backgroundColor);
 
-      final normalized = end / size.width;
-      final angle = (1 - normalized) * turnProgress * math.pi * 0.92;
-      final bend = curlRadius * (1 - math.cos(angle));
-      final depthScale = 1 + math.sin(angle) * 0.08;
+    canvas.save();
+    canvas.translate(geometry.controlPoint1.dx, geometry.controlPoint1.dy);
+    canvas.transform(geometry.reflectionMatrix.storage);
+    canvas.translate(-geometry.controlPoint1.dx, -geometry.controlPoint1.dy);
+    canvas.drawImageRect(
+      image,
+      fullImageRect,
+      fullCanvasRect,
+      Paint()
+        ..isAntiAlias = true
+        ..filterQuality = FilterQuality.medium,
+    );
+    canvas.drawPaint(
+      Paint()..color = backgroundColor.withValues(alpha: 0.55),
+    );
+    canvas.restore();
 
-      final srcLeftFactor =
-          fromRightEdge ? 1 - (end / size.width) : start / size.width;
-      final srcWidthFactor = (end - start) / size.width;
-      final srcRect = Rect.fromLTWH(
-        srcLeftFactor * image.width,
-        0,
-        srcWidthFactor * image.width,
-        image.height.toDouble(),
-      );
+    _drawAreaCShadow(canvas);
+    canvas.restore();
 
-      final left = fromRightEdge ? size.width - end - bend : start + bend;
-      final dstRect = Rect.fromLTWH(
-        left,
-        -(size.height * (depthScale - 1)) / 2,
-        (end - start) * depthScale,
-        size.height * depthScale,
-      );
+    _drawAreaBShadow(canvas);
+  }
 
-      canvas.drawImageRect(
-        image,
-        srcRect,
-        dstRect,
-        Paint()
-          ..isAntiAlias = true
-          ..filterQuality = FilterQuality.medium,
-      );
-    }
+  void _drawAreaAShadow(Canvas canvas) {
+    final shadowPath = Path()
+      ..moveTo(geometry.touchPoint.dx, geometry.touchPoint.dy)
+      ..lineTo(geometry.controlPoint2.dx, geometry.controlPoint2.dy)
+      ..lineTo(geometry.controlPoint1.dx, geometry.controlPoint1.dy)
+      ..close();
+    canvas.drawShadow(shadowPath, Colors.black, 6, true);
+  }
 
-    final edgeX = fromRightEdge ? visibleWidth : size.width - visibleWidth;
-    final shadowRect = fromRightEdge
-        ? Rect.fromLTWH(edgeX, 0, size.width - edgeX, size.height)
-        : Rect.fromLTWH(0, 0, edgeX, size.height);
+  void _drawAreaBShadow(Canvas canvas) {
+    final left = geometry.isRtAndLb ? 0.0 : -geometry.touchToCornerDistance / 4;
+    final right = geometry.isRtAndLb ? geometry.touchToCornerDistance / 4 : 0.0;
+    final gradient = geometry.isRtAndLb
+        ? const LinearGradient(
+            colors: [Color(0xAA000000), Colors.transparent],
+          )
+        : const LinearGradient(
+            colors: [Colors.transparent, Color(0xAA000000)],
+          );
 
-    final shadowPaint = Paint()
-      ..shader = LinearGradient(
-        begin: fromRightEdge ? Alignment.centerRight : Alignment.centerLeft,
-        end: fromRightEdge ? Alignment.centerLeft : Alignment.centerRight,
-        colors: [
-          Colors.black.withValues(alpha: 0.20 * turnProgress),
-          Colors.black.withValues(alpha: 0.08 * turnProgress),
-          backgroundColor.withValues(alpha: 0.0),
-        ],
-        stops: const [0.0, 0.35, 1.0],
-      ).createShader(shadowRect)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
-    canvas.drawRect(shadowRect, shadowPaint);
+    canvas.save();
+    canvas.translate(geometry.startPoint1.dx, geometry.startPoint1.dy);
+    canvas.rotate(
+      math.atan2(
+        geometry.controlPoint1.dx - geometry.cornerX,
+        geometry.controlPoint2.dy - geometry.cornerY,
+      ),
+    );
+    final rect = Rect.fromLTRB(left, 0, right, geometry.maxLength);
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = gradient.createShader(rect)
+        ..isAntiAlias = false,
+    );
+    canvas.restore();
+  }
 
-    final edgeLine = Paint()
-      ..color = Colors.black.withValues(alpha: 0.16 * turnProgress)
-      ..strokeWidth = 1.5
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2);
-    canvas.drawLine(Offset(edgeX, 0), Offset(edgeX, size.height), edgeLine);
+  void _drawAreaCShadow(Canvas canvas) {
+    final midCe = (geometry.startPoint1.dx + geometry.controlPoint1.dx) / 2;
+    final f1 = (midCe - geometry.controlPoint1.dx).abs();
+    final midJh = (geometry.startPoint2.dy + geometry.controlPoint2.dy) / 2;
+    final f2 = (midJh - geometry.controlPoint2.dy).abs();
+    final width = math.min(f1, f2) + 1;
+
+    canvas.save();
+    canvas.translate(geometry.startPoint1.dx, geometry.startPoint1.dy);
+    canvas.rotate(
+      math.atan2(
+        geometry.controlPoint1.dx - geometry.cornerX,
+        geometry.controlPoint2.dy - geometry.cornerY,
+      ),
+    );
+    final rect = Rect.fromLTRB(0, 0, width, geometry.maxLength);
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [Colors.transparent, Color(0xAA000000)],
+        ).createShader(rect)
+        ..isAntiAlias = true,
+    );
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant _SimulationCurlPainter oldDelegate) {
+  bool shouldRepaint(covariant _SimulationTurnPainter oldDelegate) {
     return oldDelegate.image != image ||
-        oldDelegate.progress != progress ||
-        oldDelegate.fromRightEdge != fromRightEdge ||
+        oldDelegate.geometry != geometry ||
         oldDelegate.backgroundColor != backgroundColor;
   }
+}
+
+class _SimulationTurnGeometry {
+  final Offset touchPoint;
+  final double cornerX;
+  final double cornerY;
+  final bool isRtAndLb;
+  final Offset controlPoint1;
+  final Offset controlPoint2;
+  final Offset startPoint1;
+  final Offset startPoint2;
+  final Offset endPoint1;
+  final Offset endPoint2;
+  final Offset vertexPoint1;
+  final Offset vertexPoint2;
+  final Path areaAPath;
+  final Path areaCPath;
+  final Matrix4 reflectionMatrix;
+  final double touchToCornerDistance;
+  final double maxLength;
+
+  const _SimulationTurnGeometry({
+    required this.touchPoint,
+    required this.cornerX,
+    required this.cornerY,
+    required this.isRtAndLb,
+    required this.controlPoint1,
+    required this.controlPoint2,
+    required this.startPoint1,
+    required this.startPoint2,
+    required this.endPoint1,
+    required this.endPoint2,
+    required this.vertexPoint1,
+    required this.vertexPoint2,
+    required this.areaAPath,
+    required this.areaCPath,
+    required this.reflectionMatrix,
+    required this.touchToCornerDistance,
+    required this.maxLength,
+  });
+
+  static _SimulationTurnGeometry compute({
+    required Size size,
+    required Offset touchPoint,
+    required bool fromNext,
+  }) {
+    var touch = touchPoint;
+    final cornerX = fromNext ? size.width : 0.0;
+    final cornerY = touch.dy <= size.height / 2 ? 0.0 : size.height;
+    final isRtAndLb = (cornerX == 0 && cornerY == size.height) ||
+        (cornerX == size.width && cornerY == 0);
+
+    Offset middle = Offset((touch.dx + cornerX) / 2, (touch.dy + cornerY) / 2);
+    Offset controlPoint1 = Offset(
+      middle.dx -
+          (cornerY - middle.dy) *
+              (cornerY - middle.dy) /
+              _safeDivisor(cornerX - middle.dx),
+      cornerY,
+    );
+    Offset controlPoint2 = Offset(
+      cornerX,
+      middle.dy -
+          (cornerX - middle.dx) *
+              (cornerX - middle.dx) /
+              _safeDivisor(cornerY - middle.dy),
+    );
+    Offset startPoint1 = Offset(
+      controlPoint1.dx - (cornerX - controlPoint1.dx) / 2,
+      cornerY,
+    );
+
+    if (touch.dx > 0 && touch.dx < size.width) {
+      if (startPoint1.dx < 0 || startPoint1.dx > size.width) {
+        if (startPoint1.dx < 0) {
+          startPoint1 = Offset(size.width - startPoint1.dx, startPoint1.dy);
+        }
+
+        final f1 = (cornerX - touch.dx).abs();
+        final f2 = size.width * f1 / _safeDivisor(startPoint1.dx);
+        touch = Offset((cornerX - f2).abs(), touch.dy);
+
+        final f3 = (cornerX - touch.dx).abs() *
+            (cornerY - touch.dy).abs() /
+            _safeDivisor(f1);
+        touch = Offset((cornerX - f2).abs(), (cornerY - f3).abs());
+
+        middle = Offset((touch.dx + cornerX) / 2, (touch.dy + cornerY) / 2);
+        controlPoint1 = Offset(
+          middle.dx -
+              (cornerY - middle.dy) *
+                  (cornerY - middle.dy) /
+                  _safeDivisor(cornerX - middle.dx),
+          cornerY,
+        );
+        controlPoint2 = Offset(
+          cornerX,
+          middle.dy -
+              (cornerX - middle.dx) *
+                  (cornerX - middle.dx) /
+                  _safeDivisor(cornerY - middle.dy),
+        );
+        startPoint1 = Offset(
+          controlPoint1.dx - (cornerX - controlPoint1.dx) / 2,
+          startPoint1.dy,
+        );
+      }
+    }
+
+    final startPoint2 = Offset(
+      cornerX,
+      controlPoint2.dy - (cornerY - controlPoint2.dy) / 2,
+    );
+
+    final touchToCornerDistance = math.sqrt(
+      math.pow(touch.dx - cornerX, 2) + math.pow(touch.dy - cornerY, 2),
+    );
+
+    final endPoint1 = _getIntersectionPoint(
+      touch,
+      controlPoint1,
+      startPoint1,
+      startPoint2,
+    );
+    final endPoint2 = _getIntersectionPoint(
+      touch,
+      controlPoint2,
+      startPoint1,
+      startPoint2,
+    );
+
+    final vertexPoint1 = Offset(
+      (startPoint1.dx + 2 * controlPoint1.dx + endPoint1.dx) / 4,
+      (2 * controlPoint1.dy + startPoint1.dy + endPoint1.dy) / 4,
+    );
+    final vertexPoint2 = Offset(
+      (startPoint2.dx + 2 * controlPoint2.dx + endPoint2.dx) / 4,
+      (2 * controlPoint2.dy + startPoint2.dy + endPoint2.dy) / 4,
+    );
+
+    final areaAPath = Path()
+      ..moveTo(cornerX == 0 ? size.width : 0, cornerY)
+      ..lineTo(startPoint1.dx, startPoint1.dy)
+      ..quadraticBezierTo(
+        controlPoint1.dx,
+        controlPoint1.dy,
+        endPoint1.dx,
+        endPoint1.dy,
+      )
+      ..lineTo(touch.dx, touch.dy)
+      ..lineTo(endPoint2.dx, endPoint2.dy)
+      ..quadraticBezierTo(
+        controlPoint2.dx,
+        controlPoint2.dy,
+        startPoint2.dx,
+        startPoint2.dy,
+      )
+      ..lineTo(cornerX, cornerY == 0 ? size.height : 0)
+      ..lineTo(cornerX == 0 ? size.width : 0, cornerY == 0 ? size.height : 0)
+      ..close();
+
+    final areaBottomPath = Path()
+      ..moveTo(cornerX, cornerY)
+      ..lineTo(startPoint1.dx, startPoint1.dy)
+      ..quadraticBezierTo(
+        controlPoint1.dx,
+        controlPoint1.dy,
+        endPoint1.dx,
+        endPoint1.dy,
+      )
+      ..lineTo(touch.dx, touch.dy)
+      ..lineTo(endPoint2.dx, endPoint2.dy)
+      ..quadraticBezierTo(
+        controlPoint2.dx,
+        controlPoint2.dy,
+        startPoint2.dx,
+        startPoint2.dy,
+      )
+      ..close();
+
+    final backTrianglePath = Path()
+      ..moveTo(vertexPoint1.dx, vertexPoint1.dy)
+      ..lineTo(vertexPoint2.dx, vertexPoint2.dy)
+      ..lineTo(touch.dx, touch.dy)
+      ..close();
+
+    final screenPath = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+
+    final clippedAreaA = Path.combine(
+      PathOperation.intersect,
+      screenPath,
+      areaAPath,
+    );
+    final areaCPath = Path.combine(
+      PathOperation.intersect,
+      screenPath,
+      Path.combine(
+        PathOperation.intersect,
+        backTrianglePath,
+        areaBottomPath,
+      ),
+    );
+
+    final distance = math.sqrt(
+      math.pow(cornerX - controlPoint1.dx, 2) +
+          math.pow(controlPoint2.dy - cornerY, 2),
+    );
+    final sinAngle = (cornerX - controlPoint1.dx) / _safeDivisor(distance);
+    final cosAngle = (controlPoint2.dy - cornerY) / _safeDivisor(distance);
+    final reflectionMatrix = Matrix4.identity();
+    reflectionMatrix.setValues(
+      -(1 - 2 * sinAngle * sinAngle),
+      2 * sinAngle * cosAngle,
+      0,
+      0,
+      2 * sinAngle * cosAngle,
+      1 - 2 * sinAngle * sinAngle,
+      0,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      1,
+    );
+
+    return _SimulationTurnGeometry(
+      touchPoint: touch,
+      cornerX: cornerX,
+      cornerY: cornerY,
+      isRtAndLb: isRtAndLb,
+      controlPoint1: controlPoint1,
+      controlPoint2: controlPoint2,
+      startPoint1: startPoint1,
+      startPoint2: startPoint2,
+      endPoint1: endPoint1,
+      endPoint2: endPoint2,
+      vertexPoint1: vertexPoint1,
+      vertexPoint2: vertexPoint2,
+      areaAPath: clippedAreaA,
+      areaCPath: areaCPath,
+      reflectionMatrix: reflectionMatrix,
+      touchToCornerDistance: touchToCornerDistance,
+      maxLength: math.sqrt(
+        math.pow(size.width, 2) + math.pow(size.height, 2),
+      ),
+    );
+  }
+
+  static Offset _getIntersectionPoint(
+    Offset p1,
+    Offset p2,
+    Offset p3,
+    Offset p4,
+  ) {
+    final x1 = p1.dx;
+    final y1 = p1.dy;
+    final x2 = p2.dx;
+    final y2 = p2.dy;
+    final x3 = p3.dx;
+    final y3 = p3.dy;
+    final x4 = p4.dx;
+    final y4 = p4.dy;
+
+    final pointX =
+        ((x1 - x2) * (x3 * y4 - x4 * y3) - (x3 - x4) * (x1 * y2 - x2 * y1)) /
+            ((x3 - x4) * (y1 - y2) - (x1 - x2) * (y3 - y4));
+    final pointY =
+        ((y1 - y2) * (x3 * y4 - x4 * y3) - (x1 * y2 - x2 * y1) * (y3 - y4)) /
+            ((y1 - y2) * (x3 - x4) - (x1 - x2) * (y3 - y4));
+
+    return Offset(pointX, pointY);
+  }
+
+  static double _safeDivisor(double value) {
+    if (value.abs() < 0.1) {
+      return value.isNegative ? -0.1 : 0.1;
+    }
+    return value;
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is _SimulationTurnGeometry &&
+        other.touchPoint == touchPoint &&
+        other.cornerX == cornerX &&
+        other.cornerY == cornerY;
+  }
+
+  @override
+  int get hashCode => Object.hash(touchPoint, cornerX, cornerY);
 }
 
 class _RevealClipper extends CustomClipper<Rect> {
