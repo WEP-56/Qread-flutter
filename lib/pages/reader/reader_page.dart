@@ -673,7 +673,7 @@ class _ReaderPageState extends State<ReaderPage> {
                             icon: const Icon(Icons.stop_circle_outlined),
                             label: const Text('停止'),
                             style: TextButton.styleFrom(
-                                primary: Colors.white),
+                                foregroundColor: Colors.white),
                           ),
                         ],
                       ),

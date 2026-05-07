@@ -403,7 +403,7 @@ class ControllerOverlay extends StatelessWidget {
             icon: const Icon(Icons.stop_circle_outlined),
             label: const Text('停止'),
             style:
-                TextButton.styleFrom(primary: Colors.white),
+                TextButton.styleFrom(foregroundColor: Colors.white),
           ),
         ],
       ),
@@ -510,7 +510,7 @@ class ControllerOverlay extends StatelessWidget {
       icon: Icon(icon, size: 18),
       label: Text(label),
       style: TextButton.styleFrom(
-        primary: Colors.white,
+        foregroundColor: Colors.white,
         textStyle: const TextStyle(fontSize: 12),
       ),
     );
