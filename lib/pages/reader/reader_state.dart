@@ -61,6 +61,19 @@ class ReaderState with ChangeNotifier {
   // ---- 缓存 ----
   final Map<String, ChapterLayout> layoutCache = {};
 
+  // ---- 预排版缓存 ----
+  /// 预排版的下一章布局（包含 content 和 chapterTitle）
+  ChapterLayout? prefetchedNextLayout;
+  String? prefetchedNextContent;
+  String? prefetchedNextTitle;
+  int prefetchedNextChapterIndex = -1;
+
+  /// 预排版的上一章布局
+  ChapterLayout? prefetchedPrevLayout;
+  String? prefetchedPrevContent;
+  String? prefetchedPrevTitle;
+  int prefetchedPrevChapterIndex = -1;
+
   void notify() => notifyListeners();
 
   // ---- 便捷方法 ----

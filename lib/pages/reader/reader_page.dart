@@ -302,9 +302,48 @@ class _ReaderPageState extends State<ReaderPage> {
     _state.pendingChapterPosition = openAtEnd ? null : chapterPosition;
     _state.pendingOpenChapterAtEnd = openAtEnd;
 
-    // 检查布局缓存（不显示 loading）
-    final content = await provider.getChapterContent(token, chapterIndex);
-    if (!mounted || requestSerial != _state.chapterRequestSerial) return;
+    // 检查是否已预排版——如果是，直接同步切换（零等待）
+    ChapterLayout? preLayout;
+    String? preContent;
+    String? preTitle;
+
+    if (_state.prefetchedNextChapterIndex == chapterIndex &&
+        _state.prefetchedNextLayout != null) {
+      preLayout = _state.prefetchedNextLayout;
+      preContent = _state.prefetchedNextContent;
+      preTitle = _state.prefetchedNextTitle;
+    } else if (_state.prefetchedPrevChapterIndex == chapterIndex &&
+        _state.prefetchedPrevLayout != null) {
+      preLayout = _state.prefetchedPrevLayout;
+      preContent = _state.prefetchedPrevContent;
+      preTitle = _state.prefetchedPrevTitle;
+    }
+
+    ChapterLayout layout;
+    String content;
+    String? chapterTitle;
+
+    if (preLayout != null && preContent != null) {
+      // 使用预排版结果，跳过网络请求和排版计算
+      layout = preLayout;
+      content = preContent;
+      chapterTitle = preTitle;
+    } else {
+      // 走完整的异步流程
+      content = await provider.getChapterContent(token, chapterIndex);
+      if (!mounted || requestSerial != _state.chapterRequestSerial) return;
+
+      chapterTitle = chapterIndex < provider.chapters.length
+          ? provider.chapters[chapterIndex].title
+          : null;
+
+      layout = _layoutChapter(
+        content: content,
+        chapterTitle: chapterTitle,
+        chapterIndex: chapterIndex,
+        targetPosition: 0,
+      );
+    }
 
     // 解析目标位置
     final targetPosition =
@@ -313,19 +352,7 @@ class _ReaderPageState extends State<ReaderPage> {
           provider.book?.durChapterPos?.round(),
         );
 
-    final chapterTitle = chapterIndex < provider.chapters.length
-        ? provider.chapters[chapterIndex].title
-        : null;
-
-    // 排版
-    final layout = _layoutChapter(
-      content: content,
-      chapterTitle: chapterTitle,
-      chapterIndex: chapterIndex,
-      targetPosition: targetPosition,
-    );
-
-    // 用新排版结果计算目标页码（而非 _state.pages，后者还是旧章节的数据）
+    // 用新排版结果计算目标页码
     final targetPage = _paginationEngine
         .pageIndexForPosition(layout.pages, targetPosition)
         .clamp(0, layout.pages.length - 1);
@@ -333,8 +360,7 @@ class _ReaderPageState extends State<ReaderPage> {
         ? 0
         : layout.pages[targetPage].startPosition;
 
-    // 先创建新 PageController，再 setState —— 避免中间状态 rebuild
-    // 使用旧 controller 导致 PageView 跳到错误页码
+    // 先创建新 PageController，再 setState
     final oldController = _pageController;
     _pageController = PageController(initialPage: targetPage);
 
@@ -351,19 +377,33 @@ class _ReaderPageState extends State<ReaderPage> {
       _state.chapterPosition = normalizedPosition;
     });
 
-    // dispose 旧 controller（在新 controller 已就位后）
+    // dispose 旧 controller
     oldController.dispose();
 
     _paragraphKeys =
         List.generate(_state.paragraphs.length, (_) => GlobalKey());
     _state.consumePendingPosition();
 
-    // 在 setState 之后再更新 book 的章节信息，避免 saveProgress 的
-    // notifyListeners 在中间状态触发 Consumer rebuild
     provider.book?.durChapterIndex = chapterIndex;
     provider.book?.durChapterTitle = chapterTitle ?? '';
 
+    // 清除已使用的预排版缓存
+    if (_state.prefetchedNextChapterIndex == chapterIndex) {
+      _state.prefetchedNextLayout = null;
+      _state.prefetchedNextContent = null;
+      _state.prefetchedNextTitle = null;
+      _state.prefetchedNextChapterIndex = -1;
+    }
+    if (_state.prefetchedPrevChapterIndex == chapterIndex) {
+      _state.prefetchedPrevLayout = null;
+      _state.prefetchedPrevContent = null;
+      _state.prefetchedPrevTitle = null;
+      _state.prefetchedPrevChapterIndex = -1;
+    }
+
+    // 后台预取上下章节
     await _prefetchNextChapter(token, chapterIndex);
+    _prefetchPrevChapter(token, chapterIndex);
 
     if (_state.continueTtsOnNextChapter) {
       _state.continueTtsOnNextChapter = false;
@@ -423,10 +463,66 @@ class _ReaderPageState extends State<ReaderPage> {
     final provider = context.read<ReaderProvider>();
     final nextIndex = chapterIndex + 1;
     if (nextIndex >= provider.chapters.length) return;
+
+    // 如果已经预排版过同一章节，跳过
+    if (_state.prefetchedNextChapterIndex == nextIndex &&
+        _state.prefetchedNextLayout != null) return;
+
     try {
-      // 预取内容到 provider 缓存
-      await provider.getChapterContent(token, nextIndex);
-    } catch (_) {}
+      final content = await provider.getChapterContent(token, nextIndex);
+      if (!mounted) return;
+
+      final chapterTitle = nextIndex < provider.chapters.length
+          ? provider.chapters[nextIndex].title
+          : null;
+
+      final layout = _layoutChapter(
+        content: content,
+        chapterTitle: chapterTitle,
+        chapterIndex: nextIndex,
+      );
+
+      _state.prefetchedNextLayout = layout;
+      _state.prefetchedNextContent = content;
+      _state.prefetchedNextTitle = chapterTitle;
+      _state.prefetchedNextChapterIndex = nextIndex;
+    } catch (_) {
+      _state.prefetchedNextLayout = null;
+      _state.prefetchedNextChapterIndex = -1;
+    }
+  }
+
+  Future<void> _prefetchPrevChapter(String token, int chapterIndex) async {
+    final provider = context.read<ReaderProvider>();
+    final prevIndex = chapterIndex - 1;
+    if (prevIndex < 0) return;
+
+    // 如果已经预排版过同一章节，跳过
+    if (_state.prefetchedPrevChapterIndex == prevIndex &&
+        _state.prefetchedPrevLayout != null) return;
+
+    try {
+      final content = await provider.getChapterContent(token, prevIndex);
+      if (!mounted) return;
+
+      final chapterTitle = prevIndex < provider.chapters.length
+          ? provider.chapters[prevIndex].title
+          : null;
+
+      final layout = _layoutChapter(
+        content: content,
+        chapterTitle: chapterTitle,
+        chapterIndex: prevIndex,
+      );
+
+      _state.prefetchedPrevLayout = layout;
+      _state.prefetchedPrevContent = content;
+      _state.prefetchedPrevTitle = chapterTitle;
+      _state.prefetchedPrevChapterIndex = prevIndex;
+    } catch (_) {
+      _state.prefetchedPrevLayout = null;
+      _state.prefetchedPrevChapterIndex = -1;
+    }
   }
 
   // ============================================================
@@ -472,7 +568,13 @@ class _ReaderPageState extends State<ReaderPage> {
       final chapterIndex = _state.displayedChapterIndex(provider.book?.durChapterIndex ?? 0);
       if (chapterIndex <= 0) return;
       _saveProgress(pos: _state.chapterPosition.toDouble());
-      _openChapter(chapterIndex - 1, openAtEnd: true);
+      // 如果上一章已预排版，直接同步切换（零等待）
+      if (_state.prefetchedPrevChapterIndex == chapterIndex - 1 &&
+          _state.prefetchedPrevLayout != null) {
+        _switchToPrevChapter();
+      } else {
+        _openChapter(chapterIndex - 1, openAtEnd: true);
+      }
     }
   }
 
@@ -503,7 +605,13 @@ class _ReaderPageState extends State<ReaderPage> {
         return;
       }
       _saveProgress(pos: _state.chapterPosition.toDouble());
-      _openChapter(chapterIndex + 1, chapterPosition: 0);
+      // 如果下一章已预排版，直接同步切换（零等待）
+      if (_state.prefetchedNextChapterIndex == chapterIndex + 1 &&
+          _state.prefetchedNextLayout != null) {
+        _switchToNextChapter();
+      } else {
+        _openChapter(chapterIndex + 1, chapterPosition: 0);
+      }
     } else {
       setState(() => _state.showController = true);
       ScaffoldMessenger.of(context).clearSnackBars();
@@ -513,6 +621,114 @@ class _ReaderPageState extends State<ReaderPage> {
           duration: Duration(seconds: 1),
         ),
       );
+    }
+  }
+
+  /// 使用预排版结果同步切换到下一章（零等待）
+  void _switchToNextChapter() {
+    final layout = _state.prefetchedNextLayout!;
+    final content = _state.prefetchedNextContent!;
+    final chapterTitle = _state.prefetchedNextTitle;
+    final chapterIndex = _state.prefetchedNextChapterIndex;
+
+    final targetPage = 0; // 下一章从首页开始
+    final normalizedPosition = layout.pages.isEmpty
+        ? 0
+        : layout.pages[targetPage].startPosition;
+
+    // 当前章节变成"上一章"的预排版
+    _state.prefetchedPrevLayout = _state.currentLayout;
+    _state.prefetchedPrevContent = _state.displayedContent;
+    _state.prefetchedPrevTitle = _displayedChapter(
+      context.read<ReaderProvider>())?.title;
+    _state.prefetchedPrevChapterIndex = _state.laidOutChapterIndex;
+
+    // 清除下一章预排版（需要在后台重新预取）
+    _state.prefetchedNextLayout = null;
+    _state.prefetchedNextContent = null;
+    _state.prefetchedNextTitle = null;
+    _state.prefetchedNextChapterIndex = -1;
+
+    // 创建新 PageController
+    final oldController = _pageController;
+    _pageController = PageController(initialPage: targetPage);
+
+    setState(() {
+      _state.loadingDisplayedChapter = false;
+      _state.displayedContent = content;
+      _state.laidOutChapterIndex = chapterIndex;
+      _state.paragraphs = layout.paragraphs;
+      _state.pages = layout.pages;
+      _state.paragraphPageLookup = layout.paragraphPageLookup;
+      _state.currentLayout = layout;
+      _state.currentPage = targetPage;
+      _state.chapterPosition = normalizedPosition;
+    });
+
+    oldController.dispose();
+    _paragraphKeys = List.generate(_state.paragraphs.length, (_) => GlobalKey());
+
+    final provider = context.read<ReaderProvider>();
+    provider.book?.durChapterIndex = chapterIndex;
+    provider.book?.durChapterTitle = chapterTitle ?? '';
+
+    // 后台预取新的下一章
+    if (_token != null) {
+      _prefetchNextChapter(_token!, chapterIndex);
+    }
+  }
+
+  /// 使用预排版结果同步切换到上一章（零等待）
+  void _switchToPrevChapter() {
+    final layout = _state.prefetchedPrevLayout!;
+    final content = _state.prefetchedPrevContent!;
+    final chapterTitle = _state.prefetchedPrevTitle;
+    final chapterIndex = _state.prefetchedPrevChapterIndex;
+
+    final targetPage = layout.pages.length - 1; // 上一章从末页开始
+    final normalizedPosition = layout.pages.isEmpty
+        ? 0
+        : layout.pages[targetPage].startPosition;
+
+    // 当前章节变成"下一章"的预排版
+    _state.prefetchedNextLayout = _state.currentLayout;
+    _state.prefetchedNextContent = _state.displayedContent;
+    _state.prefetchedNextTitle = _displayedChapter(
+      context.read<ReaderProvider>())?.title;
+    _state.prefetchedNextChapterIndex = _state.laidOutChapterIndex;
+
+    // 清除上一章预排版（需要在后台重新预取）
+    _state.prefetchedPrevLayout = null;
+    _state.prefetchedPrevContent = null;
+    _state.prefetchedPrevTitle = null;
+    _state.prefetchedPrevChapterIndex = -1;
+
+    // 创建新 PageController
+    final oldController = _pageController;
+    _pageController = PageController(initialPage: targetPage);
+
+    setState(() {
+      _state.loadingDisplayedChapter = false;
+      _state.displayedContent = content;
+      _state.laidOutChapterIndex = chapterIndex;
+      _state.paragraphs = layout.paragraphs;
+      _state.pages = layout.pages;
+      _state.paragraphPageLookup = layout.paragraphPageLookup;
+      _state.currentLayout = layout;
+      _state.currentPage = targetPage;
+      _state.chapterPosition = normalizedPosition;
+    });
+
+    oldController.dispose();
+    _paragraphKeys = List.generate(_state.paragraphs.length, (_) => GlobalKey());
+
+    final provider = context.read<ReaderProvider>();
+    provider.book?.durChapterIndex = chapterIndex;
+    provider.book?.durChapterTitle = chapterTitle ?? '';
+
+    // 后台预取新的上一章
+    if (_token != null) {
+      _prefetchPrevChapter(_token!, chapterIndex);
     }
   }
 
