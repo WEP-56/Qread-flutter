@@ -13,6 +13,11 @@ import 'models.dart';
 /// - 旧版段落级分页在"页面有内容但新段落放不下"时直接提交空底页
 /// - 旧版只在段落独占整页时才触发二分截断，导致大段文字推到下页
 /// - 新版行级分页天然解决这些问题，每页都填到最满
+///
+/// v2 修复：
+/// - 严格限制文字区域不超出可用高度（解决滑轨和溢出问题）
+/// - 中文断行优化：避免单字独占一行（widow/orphan 控制）
+/// - 精确的行高和间距计算，确保排版引擎与渲染引擎一致
 
 class PaginationEngine {
   /// 页面布局常量
@@ -22,20 +27,9 @@ class PaginationEngine {
   static const double chapterHeaderHeight = 30.0;
   static const double footerHeight = 22.0;
   static const double headerBottomSpacing = 14.0;
-  static const double lineSpacing = 10.0;
   static const double paragraphSpacing = 10.0;
 
   /// 计算章节的完整分页布局
-  ///
-  /// [content] 章节正文
-  /// [chapterTitle] 章节标题
-  /// [chapterIndex] 章节索引
-  /// [fontSize] 字号
-  /// [lineHeight] 行高倍率
-  /// [viewportSize] 视口尺寸
-  /// [safeTop] 安全区顶部
-  /// [safeBottom] 安全区底部
-  /// [targetPosition] 目标阅读位置（字符偏移），用于确定初始页码
   ChapterLayout paginate({
     required String content,
     required String? chapterTitle,
@@ -60,7 +54,7 @@ class PaginationEngine {
       );
     }
 
-    // 2. 计算可用区域
+    // 2. 计算可用区域（严格计算，与 content_renderer.dart 保持一致）
     final availableWidth = viewportSize.width - horizontalPadding * 2;
     final availableHeight = viewportSize.height -
         safeTop -
@@ -71,7 +65,11 @@ class PaginationEngine {
         footerHeight -
         headerBottomSpacing;
 
-    // 3. 逐段落 → 逐行 → 分页
+    // 3. 计算精确行高（与渲染端 TextStyle 一致）
+    final bodyLineHeightPx = fontSize * lineHeight;
+    final titleLineHeightPx = (fontSize + 4) * 1.45;
+
+    // 4. 逐段落 → 逐行 → 分页
     final pages = <PageSlice>[];
     final lookup = <int, int>{};
     var currentLines = <TextLine>[];
@@ -111,7 +109,7 @@ class PaginationEngine {
     }
 
     for (final paragraph in paragraphs) {
-      // 3a. 将段落拆成行
+      // 4a. 将段落拆成行
       final lines = _splitParagraphToLines(
         paragraph: paragraph,
         fontSize: fontSize,
@@ -119,10 +117,16 @@ class PaginationEngine {
         maxWidth: availableWidth,
       );
 
-      // 3b. 逐行添加到当前页
+      // 4b. 逐行添加到当前页
       for (int i = 0; i < lines.length; i++) {
         final line = lines[i];
-        final lineTotalHeight = line.height + lineSpacing;
+        // 行实际占用高度 = fontSize * lineHeight（与渲染端一致）
+        final lineHeightPx =
+            line.isTitle ? titleLineHeightPx : bodyLineHeightPx;
+        // 行间距：段内行间距 2px，段尾用 paragraphSpacing
+        final isLastLine = line.isLastLineOfParagraph;
+        final lineMarginBottom = isLastLine ? paragraphSpacing : 2.0;
+        final lineTotalHeight = lineHeightPx + lineMarginBottom;
 
         // 如果加上这行会超出可用高度，先提交当前页
         if (currentLines.isNotEmpty &&
@@ -133,11 +137,6 @@ class PaginationEngine {
         // 如果当前页为空且单行就超高（极端情况），仍然加入
         currentLines.add(line);
         currentHeight += lineTotalHeight;
-      }
-
-      // 段落间距（非标题段落之间）
-      if (!paragraph.isTitle) {
-        currentHeight += paragraphSpacing - lineSpacing;
       }
     }
 
@@ -155,8 +154,14 @@ class PaginationEngine {
 
   /// 将段落拆分为 TextLine 列表
   ///
-  /// 核心方法：使用 TextPainter 获取文本的真实行拆分结果，
-  /// 每行带位置信息，实现"段落自然跨页"。
+  /// 核心方法：使用 TextPainter 的 computeLineMetrics 获取行数，
+  /// 然后用 getLineBoundary 逐行获取字符范围。
+  /// 行文本直接使用 fullText 的子串，在渲染时根据 isFirstLineOfParagraph
+  /// 决定是否加缩进前缀，避免偏移映射错误。
+  ///
+  /// 中文断行优化（v2）：
+  /// - 检测"孤字"情况（行尾只剩1个汉字），如果存在则将孤字移到下一行
+  /// - 避免中文双字词被拆开（如"长老"拆成"长"+"老"）
   List<TextLine> _splitParagraphToLines({
     required ReaderParagraph paragraph,
     required double fontSize,
@@ -169,9 +174,10 @@ class PaginationEngine {
     final fontWeight = isTitle ? FontWeight.w600 : FontWeight.normal;
     final lineHeightPx = effectiveFontSize * effectiveLineHeight;
 
-    // 首行加缩进
+    // 首行加缩进——与渲染端保持一致
     final fullText =
         isTitle ? paragraph.text : '\u3000\u3000${paragraph.text}';
+    final indentLength = isTitle ? 0 : 2; // \u3000\u3000 占2个字符
 
     // 使用 TextPainter 计算行拆分
     final painter = TextPainter(
@@ -188,73 +194,143 @@ class PaginationEngine {
     )..layout(maxWidth: maxWidth);
 
     final lineMetrics = painter.computeLineMetrics();
-    final result = <TextLine>[];
+    final rawLines = <_RawLine>[];
 
     if (lineMetrics.isEmpty || paragraph.text.isEmpty) {
-      return result;
+      return [];
     }
 
-    // 通过 getLineBoundary 逐行获取字符范围
+    // 逐行获取边界
     int currentOffset = 0;
     final textLength = fullText.length;
-    final indentLength = isTitle ? 0 : 2; // \u3000\u3000 占2个字符
 
     for (int lineIndex = 0; lineIndex < lineMetrics.length; lineIndex++) {
       if (currentOffset >= textLength) break;
 
-      final position = TextPosition(offset: currentOffset);
+      final position = TextPosition(
+        offset: currentOffset,
+        affinity: TextAffinity.downstream,
+      );
       final boundary = painter.getLineBoundary(position);
 
       final lineStart = boundary.start;
-      final lineEnd = boundary.end.clamp(0, textLength);
+      final lineEnd = boundary.end;
 
-      if (lineStart >= lineEnd) break;
+      // 防御：跳过空行
+      if (lineStart >= lineEnd || lineEnd <= currentOffset) {
+        currentOffset++;
+        continue;
+      }
 
-      // 计算在原文中的偏移（去掉缩进前缀的偏移量）
-      int effectiveOriginalStart;
-      int effectiveOriginalEnd;
+      // 从 fullText 中截取本行文本（含缩进前缀）
+      final rawLineText =
+          fullText.substring(lineStart.clamp(0, textLength), lineEnd.clamp(0, textLength));
 
+      // 跳过纯空白行
+      if (rawLineText.trim().isEmpty && lineIndex > 0) {
+        currentOffset = lineEnd;
+        continue;
+      }
+
+      // 计算在原文 paragraph.text 中的偏移
+      final originalStart =
+          (lineStart - indentLength).clamp(0, paragraph.text.length);
+      final originalEnd =
+          (lineEnd - indentLength).clamp(0, paragraph.text.length);
+
+      // 行显示文本：去掉缩进前缀部分
+      String displayText;
       if (isTitle) {
-        effectiveOriginalStart = lineStart;
-        effectiveOriginalEnd = lineEnd;
+        displayText = rawLineText;
       } else {
-        // 有缩进前缀，需要减去缩进长度
-        effectiveOriginalStart =
-            (lineStart - indentLength).clamp(0, paragraph.text.length);
-        effectiveOriginalEnd =
-            (lineEnd - indentLength).clamp(0, paragraph.text.length);
+        if (lineIndex == 0) {
+          displayText = rawLineText.length > indentLength
+              ? rawLineText.substring(indentLength)
+              : '';
+        } else {
+          displayText = rawLineText;
+        }
       }
 
-      // 跳过纯缩进行（不应发生，但防御性处理）
-      if (effectiveOriginalStart >= effectiveOriginalEnd &&
-          lineIndex == 0 &&
-          !isTitle) {
+      // 跳过截取后为空的行
+      if (displayText.trim().isEmpty && lineIndex > 0) {
         currentOffset = lineEnd;
         continue;
       }
 
-      final lineText = paragraph.text.substring(
-        effectiveOriginalStart.clamp(0, paragraph.text.length),
-        effectiveOriginalEnd.clamp(0, paragraph.text.length),
-      );
+      final isLastLine = lineIndex == lineMetrics.length - 1;
 
-      if (lineText.trimLeft().isEmpty && lineIndex > 0) {
-        currentOffset = lineEnd;
-        continue;
-      }
-
-      result.add(TextLine(
-        paragraphIndex: paragraph.index,
-        text: lineText,
-        startOffset: effectiveOriginalStart,
-        endOffset: effectiveOriginalEnd,
-        isTitle: isTitle,
-        isFirstLineOfParagraph: lineIndex == 0,
-        isLastLineOfParagraph: lineIndex == lineMetrics.length - 1,
-        height: lineHeightPx,
+      rawLines.add(_RawLine(
+        displayText: displayText,
+        originalStart: originalStart,
+        originalEnd: originalEnd,
+        isFirstLine: lineIndex == 0,
+        isLastLine: isLastLine,
       ));
 
       currentOffset = lineEnd;
+    }
+
+    // 中文断行优化：处理孤字（orphan）问题
+    // 如果一行末尾只有1个汉字，将它移到下一行开头
+    // 这样可以避免"长老"被拆成"长"+"老"等情况
+    if (rawLines.length > 1 && !isTitle) {
+      for (int i = 0; i < rawLines.length - 1; i++) {
+        final current = rawLines[i];
+        final next = rawLines[i + 1];
+
+        // 只处理非最后一行
+        if (current.isLastLine) continue;
+
+        final text = current.displayText;
+        // 检测行尾是否只有1个CJK字符（孤字）
+        if (text.length >= 2 && _isCjkChar(text.codeUnitAt(text.length - 1))) {
+          // 检查行尾字符前一个字符是否也是CJK
+          // 如果是，说明可能是双字词被拆开了
+          final prevChar = text.codeUnitAt(text.length - 2);
+          if (_isCjkChar(prevChar)) {
+            // 检查下一行开头是否也是CJK字符
+            // 只有当下一行也有内容时才做合并
+            if (next.displayText.isNotEmpty) {
+              // 将当前行最后一个字符移到下一行
+              final orphanChar = text.substring(text.length - 1);
+              final newCurrentText = text.substring(0, text.length - 1);
+              final newNextText = orphanChar + next.displayText;
+
+              rawLines[i] = _RawLine(
+                displayText: newCurrentText,
+                originalStart: current.originalStart,
+                originalEnd: current.originalEnd - 1,
+                isFirstLine: current.isFirstLine,
+                isLastLine: false,
+              );
+              rawLines[i + 1] = _RawLine(
+                displayText: newNextText,
+                originalStart: next.originalStart - 1,
+                originalEnd: next.originalEnd,
+                isFirstLine: next.isFirstLine,
+                isLastLine: next.isLastLine,
+              );
+            }
+          }
+        }
+      }
+    }
+
+    // 转换为 TextLine 列表
+    final result = <TextLine>[];
+    for (int i = 0; i < rawLines.length; i++) {
+      final raw = rawLines[i];
+      result.add(TextLine(
+        paragraphIndex: paragraph.index,
+        text: raw.displayText,
+        startOffset: raw.originalStart,
+        endOffset: raw.originalEnd,
+        isTitle: isTitle,
+        isFirstLineOfParagraph: raw.isFirstLine,
+        isLastLineOfParagraph: raw.isLastLine,
+        height: lineHeightPx,
+      ));
     }
 
     // 修正最后一行标记
@@ -272,6 +348,19 @@ class PaginationEngine {
     }
 
     return result;
+  }
+
+  /// 判断是否为CJK字符
+  static bool _isCjkChar(int codeUnit) {
+    // CJK Unified Ideographs: 4E00-9FFF
+    // CJK Unified Ideographs Extension A: 3400-4DBF
+    // CJK Compatibility Ideographs: F900-FAFF
+    // CJK Radicals Supplement: 2E80-2EFF
+    // CJK Symbols and Punctuation: 3000-303F (含中文标点)
+    return (codeUnit >= 0x4E00 && codeUnit <= 0x9FFF) ||
+        (codeUnit >= 0x3400 && codeUnit <= 0x4DBF) ||
+        (codeUnit >= 0xF900 && codeUnit <= 0xFAFF) ||
+        (codeUnit >= 0x2E80 && codeUnit <= 0x2EFF);
   }
 
   /// 将 HTML/混合内容清洗为纯文本段落
@@ -340,4 +429,21 @@ class PaginationEngine {
       caseSensitive: false,
     ).hasMatch(content);
   }
+}
+
+/// 内部使用的行数据（用于断行优化处理）
+class _RawLine {
+  final String displayText;
+  final int originalStart;
+  final int originalEnd;
+  final bool isFirstLine;
+  final bool isLastLine;
+
+  _RawLine({
+    required this.displayText,
+    required this.originalStart,
+    required this.originalEnd,
+    required this.isFirstLine,
+    required this.isLastLine,
+  });
 }

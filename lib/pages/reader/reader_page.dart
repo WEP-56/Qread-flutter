@@ -306,7 +306,7 @@ class _ReaderPageState extends State<ReaderPage> {
     final content = await provider.getChapterContent(token, chapterIndex);
     if (!mounted || requestSerial != _state.chapterRequestSerial) return;
 
-    // 先排版，再更新 UI —— 避免双重 setState 闪屏
+    // 解析目标位置
     final targetPosition =
         _state.resolveTargetChapterPosition(
           provider.book?.durChapterIndex ?? 0,
@@ -325,7 +325,9 @@ class _ReaderPageState extends State<ReaderPage> {
       targetPosition: targetPosition,
     );
 
-    final targetPage = _state.pageIndexForPosition(targetPosition)
+    // 用新排版结果计算目标页码（而非 _state.pages，后者还是旧章节的数据）
+    final targetPage = _paginationEngine
+        .pageIndexForPosition(layout.pages, targetPosition)
         .clamp(0, layout.pages.length - 1);
     final normalizedPosition = layout.pages.isEmpty
         ? 0
@@ -408,8 +410,11 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   void _recreatePageController(int initialPage) {
-    _pageController.dispose();
+    // 先创建新 controller，再 dispose 旧的，避免旧 PageView 在 dispose 期间
+    // 触发 onPageChanged 回调导致 currentPage 被错误覆盖
+    final oldController = _pageController;
     _pageController = PageController(initialPage: initialPage);
+    oldController.dispose();
   }
 
   Future<void> _prefetchNextChapter(String token, int chapterIndex) async {
@@ -1012,7 +1017,9 @@ class _ReaderPageState extends State<ReaderPage> {
       targetPosition: targetPosition,
     );
 
-    final targetPage = _state.pageIndexForPosition(targetPosition).clamp(0, layout.pages.length - 1);
+    final targetPage = _paginationEngine
+        .pageIndexForPosition(layout.pages, targetPosition)
+        .clamp(0, layout.pages.length - 1);
     final normalizedPosition = layout.pages.isEmpty
         ? 0
         : layout.pages[targetPage].startPosition;

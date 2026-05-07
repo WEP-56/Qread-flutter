@@ -84,14 +84,26 @@ class ReaderState with ChangeNotifier {
   }
 
   /// 解析目标章节位置
+  ///
+  /// 优先级：
+  /// 1. openAtEnd 标记 → 返回极大值（映射到最后一页）
+  /// 2. pendingChapterPosition → 直接使用
+  /// 3. 如果正在请求的章节与已排版章节相同 → 使用当前 chapterPosition
+  /// 4. 如果请求的章节与 book 保存的章节相同 → 使用保存的位置
+  /// 5. 默认 → 0（首页）
   int resolveTargetChapterPosition(int bookDurChapterIndex, int? bookDurChapterPos) {
+    // 最高优先级：跳到末尾
     if (pendingOpenChapterAtEnd) {
       return 1 << 30;
     }
+    // 次高优先级：显式指定的位置
     if (pendingChapterPosition != null) {
       return pendingChapterPosition!;
     }
-    if (laidOutChapterIndex == displayedChapterIndex(bookDurChapterIndex)) {
+    // 以下分支只在 _rebuildPages（同章节重排）时才会走到
+    // 对于 _openChapter（新章节），前两个分支一定能覆盖
+    if (laidOutChapterIndex >= 0 &&
+        laidOutChapterIndex == displayedChapterIndex(bookDurChapterIndex)) {
       return chapterPosition;
     }
     if (bookDurChapterIndex == displayedChapterIndex(bookDurChapterIndex)) {

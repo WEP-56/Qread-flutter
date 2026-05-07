@@ -28,9 +28,9 @@ class ContentRenderer {
         children: [
           _buildChapterHeader(chapterTitle, theme),
           const SizedBox(height: 14),
+          // 使用 Expanded + overflow: Clip 嚴格限制文字區域
           Expanded(
-            child: SingleChildScrollView(
-              physics: const NeverScrollableScrollPhysics(),
+            child: ClipRect(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -80,6 +80,7 @@ class ContentRenderer {
   }) {
     final isHighlighted = line.paragraphIndex == ttsParagraphIndex;
     final effectiveFontSize = line.isTitle ? fontSize + 4 : fontSize;
+    final effectiveColor = isHighlighted ? theme.highlight : theme.text;
     final effectiveLineHeight = line.isTitle ? 1.45 : lineHeight;
     final fontWeight =
         line.isTitle ? FontWeight.w600 : FontWeight.normal;
@@ -88,21 +89,17 @@ class ContentRenderer {
     final displayText =
         line.isTitle ? line.text : '${line.isFirstLineOfParagraph ? '\u3000\u3000' : ''}${line.text}';
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
+    return Container(
       margin: EdgeInsets.only(
         bottom: line.isLastLineOfParagraph ? 10 : 2,
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-      decoration: BoxDecoration(
-        color: isHighlighted ? theme.highlight : Colors.transparent,
-        borderRadius: BorderRadius.circular(4),
-      ),
       child: Text(
         displayText,
+        softWrap: true,
+        overflow: TextOverflow.visible,
         style: TextStyle(
           fontSize: effectiveFontSize,
-          color: theme.text,
+          color: effectiveColor,
           height: effectiveLineHeight,
           fontWeight: fontWeight,
         ),
@@ -123,8 +120,7 @@ class ContentRenderer {
     final effectiveFontSize = isTitle ? fontSize + 4 : fontSize;
     final effectiveLineHeight = isTitle ? 1.45 : lineHeight;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
+    return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
       decoration: BoxDecoration(
